@@ -1,9 +1,7 @@
 from sqlalchemy import Column, Integer, String, Enum, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint
 from sqlalchemy.orm import relationship, validates, session
-from datetime import datetime
 from sqlalchemy.sql import func
 from .database import Base
-from decimal import Decimal
 
 class User(Base):
     __tablename__ = "users"

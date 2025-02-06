@@ -24,27 +24,31 @@ class UserBase(BaseModel):
     email: EmailStr
 
 class UserCreate(UserBase):
-    phone: str
     password: str
+    phone: str
+
     @validator('password')
     def validate_password(cls, v):
         password_pattern = r"^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*(),.?\":{}|<>]).{8,}$"
-        if not re.match(password_pattern, v):
+        if not re.fullmatch(password_pattern, v):
             raise ValueError("Password must contain at least one uppercase letter, one number, one special character, and be at least 8 characters long.")
         return v
-    
+
     @validator('phone')
     def validate_phone(cls, v):
-        if v and not re.match(r"^\+?[1-9]\d{1,14}$", v):
+        if v and not re.match(r"^\+?[1-9]\d{1,14}$", v):  # Simple international phone format
             raise ValueError("Invalid phone number format")
         return v
 
 class UserResponse(UserBase):
     user_id: int
     role: str
+    phone: str
 
     class Config:
         from_attributes = True
+        orm_mode = True
+        fields = {'password_hash': {'exclude': True}}
 
 
 class ProductBase(BaseModel):

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
-from app.crud import create_user, get_user_by_email
-from app.schemas import UserCreate
+from app.crud import create_user, get_user_by_email, get_user_by_phone
+from app.schemas import UserCreate, UserResponse
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -17,15 +17,18 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/users", response_model=UserCreate)
+@router.post("/users", response_model=UserResponse)
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = get_user_by_email(db, user.email)
-    if db_user:
+    db_user_email = get_user_by_email(db, user.email)
+    db_user_phone = get_user_by_phone(db, user.phone)
+    if db_user_email:
         raise HTTPException(status_code=400, detail="Email already registered")
+    
+    if db_user_phone:
+        raise HTTPException(status_code=400, detail="Phone already registered")
 
-    
-    hashed_password = pwd_context.hash(user.password)
+    user.password = pwd_context.hash(user.password)
     db_user = create_user(db, user)
-    db_user.password_hash = hashed_password
     
-    return db_user
+    return UserResponse.model_validate(db_user)
+

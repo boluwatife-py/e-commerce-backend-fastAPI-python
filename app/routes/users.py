@@ -56,7 +56,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 @router.post("/login", response_model=Token)
 def login(user_data: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_data.email).first()
-    if not user or not pwd_context.verify(user_data.password, user.password):
+    if not user or not pwd_context.verify(user_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     access_token = create_access_token({"sub": user.email, "role": user.role})

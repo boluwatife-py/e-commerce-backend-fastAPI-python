@@ -10,5 +10,12 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./test.db")
+    
+    SMTP_SERVER = os.getenv("SMTP_SERVER")
+    SMTP_PORT = os.getenv("SMTP_PORT")
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+    BASE_URL = os.getenv("BASE_URL")
+    VERIFICATION_TOKEN_EXPIRE_MINUTES = os.getenv("VERIFICATION_TOKEN_EXPIRE_MINUTES")
 
 settings = Settings()

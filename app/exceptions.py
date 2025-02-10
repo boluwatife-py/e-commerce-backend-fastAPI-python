@@ -1,15 +1,15 @@
 from fastapi import Request, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
-# Custom exception handler for validation errors
+
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = []
     for error in exc.errors():
-        field = ".".join(str(loc) for loc in error["loc"])  # Extract field name
-        message = error["msg"]
-        errors.append({"field": field, "message": message})
-    
+        field_path = ".".join(str(loc) for loc in error["loc"])
+        errors.append({"field": field_path, "message": error["msg"]})
+
     return JSONResponse(
         status_code=422,
         content={"detail": "Validation Error", "errors": errors},

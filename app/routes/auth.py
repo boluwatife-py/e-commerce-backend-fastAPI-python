@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from app.database import get_db
 from app.crud import create_user, get_user_by_email, get_user_by_phone
 from app.models import User
-from app.schemas import UserCreate, Token, LoginRequest, TokenRefreshRequest
+from app.schemas import UserCreate, Token, LoginRequest, TokenRefreshRequest, UserResponse
 from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token
 from fastapi import BackgroundTasks
 from core.email_utils import send_verification_email
@@ -13,9 +13,24 @@ router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+responces = {
+    422: {
+        "description": "Validation Error",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Validation Error",
+                    "errors": [
+                        {"field": "body.phone", "message": "Invalid phone number format"},
+                        {"field": "body.password", "message": "Password must meet security requirements"}
+                    ]
+                }
+            }
+        }
+    }
+}
 
-@router.post("/signup", response_model=Token)
-@router.post("/signup", response_model=Token)
+@router.post("/signup", response_model=UserResponse, responses=responces)
 def register_user(user: UserCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     try:
         db.begin()
@@ -44,8 +59,7 @@ def register_user(user: UserCreate, background_tasks: BackgroundTasks, db: Sessi
 
     except Exception as e:
         db.rollback()
-        print(e)
-        raise HTTPException(status_code=500, detail="Signup failed. Please try again.")
+        raise HTTPException(status_code=500, detail=e)
 
 
 @router.post("/login", response_model=Token)

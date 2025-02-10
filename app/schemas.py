@@ -39,7 +39,10 @@ class UserCreate(UserBase):
         if not re.fullmatch(password_pattern, v):
             raise ValueError("Password must contain at least one uppercase letter, one number, one special character, and be at least 8 characters long.")
         return v
-    
+
+
+class UserResponse(BaseModel):
+    email: EmailStr = Field(..., example="example@example.com")
 
 class ProductBase(BaseModel):
     name: str

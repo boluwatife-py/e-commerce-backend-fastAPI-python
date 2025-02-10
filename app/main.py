@@ -8,7 +8,7 @@ app = FastAPI(title="E-Commerce API")
 def root():
     return {"message": "E-Commerce API is running"}
 
-app.include_router(users.router, prefix="/api")
+app.include_router(users.router, prefix="/auth")
 
 if __name__ == "__main__":
     app.run()

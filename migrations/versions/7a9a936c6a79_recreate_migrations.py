@@ -1,8 +1,8 @@
-"""Initial migration
+"""Recreate migrations
 
-Revision ID: deef66e20565
+Revision ID: 7a9a936c6a79
 Revises: 
-Create Date: 2025-02-05 12:14:30.740100
+Create Date: 2025-02-10 13:07:12.226989
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'deef66e20565'
+revision: str = '7a9a936c6a79'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -37,7 +37,7 @@ def upgrade() -> None:
     sa.Column('valid_to', sa.Date(), nullable=True),
     sa.Column('min_order_value', sa.DECIMAL(precision=10, scale=2), nullable=True),
     sa.Column('max_discount_value', sa.DECIMAL(precision=10, scale=2), nullable=True),
-    sa.Column('status', sa.Enum('active', 'expired', 'disabled', name='coupon_status'), nullable=False),
+    sa.Column('status', sa.Enum('active', 'expired', 'disabled', name='status'), nullable=False),
     sa.CheckConstraint('discount_percentage BETWEEN 0 AND 100', name='discount_percentage_check'),
     sa.PrimaryKeyConstraint('coupon_id'),
     sa.UniqueConstraint('code')
@@ -48,12 +48,13 @@ def upgrade() -> None:
     sa.Column('last_name', sa.String(length=50), nullable=False),
     sa.Column('email', sa.String(length=100), nullable=False),
     sa.Column('password_hash', sa.String(length=255), nullable=False),
-    sa.Column('phone', sa.String(length=20), nullable=True),
+    sa.Column('phone', sa.String(length=20), nullable=False),
     sa.Column('address', sa.Text(), nullable=True),
     sa.Column('city', sa.String(length=50), nullable=True),
     sa.Column('state', sa.String(length=50), nullable=True),
     sa.Column('zip_code', sa.String(length=10), nullable=True),
     sa.Column('country', sa.String(length=50), nullable=True),
+    sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('role', sa.Enum('admin', 'buyer', 'merchant', name='user_roles'), nullable=False),
     sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=True),
     sa.PrimaryKeyConstraint('user_id'),

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint
+from sqlalchemy import Column, Integer, String, Enum, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean
 from sqlalchemy.orm import relationship, validates, session
 from sqlalchemy.sql import func
 from app.database import Base
@@ -17,6 +17,7 @@ class User(Base):
     state = Column(String(50))
     zip_code = Column(String(10))
     country = Column(String(50))
+    is_active = Column(Boolean, default=False, nullable=False)
     
     role = Column(Enum("admin", "buyer", "merchant", name="user_roles"), default="buyer", nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
@@ -215,7 +216,7 @@ class Coupon(Base):
     valid_to = Column(Date, nullable=True)
     min_order_value = Column(DECIMAL(10, 2), default=0)
     max_discount_value = Column(DECIMAL(10, 2), nullable=True)
-    status = Column(Enum("active", "expired", "disabled", name="coupon_status"), default="active", nullable=False)
+    status = Column(Enum("active", "expired", "disabled", name="status"), default="active", nullable=False)
     
     
     orders = relationship("Order", back_populates="coupon")

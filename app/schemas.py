@@ -40,19 +40,6 @@ class UserCreate(UserBase):
             raise ValueError("Password must contain at least one uppercase letter, one number, one special character, and be at least 8 characters long.")
         return v
 
-
-class UserResponse(UserBase):
-    first_name: str
-    last_name: str
-    email: str
-    phone: str
-    user_id: int
-    role: str
-    
-    class Config:
-        from_attributes = True
-
-
 class ProductBase(BaseModel):
     name: str
     description: Optional[str] = None
@@ -116,8 +103,16 @@ class PaymentResponse(PaymentBase):
 
 class Token(BaseModel):
     access_token: str
-    token_type: str
+    refresh_token: str
+    token_type: str = "bearer"
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
+
+class TokenRefreshResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"

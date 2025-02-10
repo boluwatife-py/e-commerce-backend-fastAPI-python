@@ -15,25 +15,37 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 @router.post("/signup", response_model=Token)
+@router.post("/signup", response_model=Token)
 def register_user(user: UserCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    db_user_email = get_user_by_email(db, user.email)
-    db_user_phone = get_user_by_phone(db, user.phone)
-    
-    if db_user_email:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    if db_user_phone:
-        raise HTTPException(status_code=400, detail="Phone already registered")
+    try:
+        db.begin()
+        
+        if get_user_by_email(db, user.email):
+            raise HTTPException(status_code=400, detail="Email already registered")
 
-    user.password = hash_password(user.password)
-    db_user = create_user(db, user)
-    
-    verification_token = create_verification_token(db_user.email)
-    background_tasks.add_task(send_verification_email, db_user.email, verification_token)
-    
-    access_token = create_access_token({"sub": db_user.email, "role": db_user.role})
-    refresh_token = create_refresh_token({"sub": db_user.email})
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+        if get_user_by_phone(db, user.phone):
+            raise HTTPException(status_code=400, detail="Phone already registered")
+
+        user.password = hash_password(user.password)
+        db_user = create_user(db, user)
+        
+        verification_token = create_verification_token(db_user.email)
+        background_tasks.add_task(send_verification_email, db_user.email, verification_token)
+
+        access_token = create_access_token({"sub": db_user.email, "role": db_user.role})
+        refresh_token = create_refresh_token({"sub": db_user.email})
+
+        db.commit()
+        return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
+        print(e)
+        raise HTTPException(status_code=500, detail="Signup failed. Please try again.")
 
 
 @router.post("/login", response_model=Token)

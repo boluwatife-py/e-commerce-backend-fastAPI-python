@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, condecimal, validator
+from pydantic import BaseModel, EmailStr, condecimal, validator, Field
 from decimal import Decimal
 from typing import Optional
 from enum import Enum
@@ -19,10 +19,10 @@ class PaymentStatus(str, Enum):
 
 # User Schema
 class UserBase(BaseModel):
-    first_name: str
-    last_name: str
-    email: EmailStr
-    phone: str
+    first_name: str = Field(..., example="John")
+    last_name: str = Field(..., example="Doe")
+    email: EmailStr = Field(..., example="user@example.com")
+    phone: str = Field(..., example="+1234567890")
     
     @validator('phone')
     def validate_phone(cls, v):
@@ -31,14 +31,15 @@ class UserBase(BaseModel):
         return v
 
 class UserCreate(UserBase):
-    password: str
-
+    password: str = Field(..., example="Secure@123")
+    
     @validator('password')
     def validate_password(cls, v):
         password_pattern = r"^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*(),.?\":{}|<>]).{8,}$"
         if not re.fullmatch(password_pattern, v):
             raise ValueError("Password must contain at least one uppercase letter, one number, one special character, and be at least 8 characters long.")
         return v
+    
 
 class ProductBase(BaseModel):
     name: str

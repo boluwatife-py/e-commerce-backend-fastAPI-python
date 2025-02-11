@@ -18,8 +18,5 @@ class Settings:
     BASE_URL = os.getenv("BASE_URL")
     VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 10
     RESET_TOKEN_EXPIRE_MINUTES: int = 10
-    
-    REDIS_HOST = os.getenv("REDIS_HOST", "102.89.76.246")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
 settings = Settings()

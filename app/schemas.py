@@ -31,7 +31,6 @@ class UserCreate(UserBase):
 class UserResponse(BaseModel):
     email: EmailStr = Field(..., example="example@example.com")
 
-
 class RequestVerificationLink(BaseModel):
     email: EmailStr = Field(..., example="email@example.com")
 

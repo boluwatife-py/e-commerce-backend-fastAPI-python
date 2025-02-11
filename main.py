@@ -32,8 +32,9 @@ def root():
 
 
 
-from app.routes import auth
+from app.routes import auth, products
 
 app.include_router(auth.router, prefix="/auth")
+app.include_router(products.router, prefix="/products")
 if __name__ == "__main__":
     app.run()

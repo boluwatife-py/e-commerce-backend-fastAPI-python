@@ -44,7 +44,11 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         db.add(db_user)
 
         verification_token = create_verification_token(user.email)
-        send_verification_email(user.email, verification_token)
+        
+        success, message = send_reset_password_email(user.email, verification_token)
+
+        if not success:
+            raise HTTPException(status_code=503, detail=message)
 
         db.commit()
         db.refresh(db_user)
@@ -150,7 +154,7 @@ def forgot_password(
     data: PasswordResetRequest, 
     db: Session = Depends(get_db), 
     authorization: str = Header(None)  # Token in the header
-):
+    ):
     """
     Allows only unauthenticated users to request a password reset.
     If a valid token is provided in the Authorization header, reject the request.
@@ -168,28 +172,50 @@ def forgot_password(
         raise HTTPException(status_code=404, detail="User not found")
 
     reset_token = create_password_reset_token(user.email)
-    store_reset_token(user.email, reset_token)
-    send_reset_password_email(user.email, reset_token)
+    store_reset_token(db, reset_token, user.email)
+    
+    success, message = send_reset_password_email(user.email, reset_token)
+    if not success:
+        raise HTTPException(status_code=503, detail=message)
 
     return {"message": "A password reset link has been sent to your email"}
 
 
 @router.post("/reset-password/")
 def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
-    email = verify_reset_token(data.token)  # Get email from Redis
-    if not email:
+    try:
+        # 🛠 Verify token
+        payload = verify_token(data.token)
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid token")
+
+    except:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
 
+    # 🛠 Find token in the database
+    reset_token = db.query(PasswordResetToken).filter_by(token=data.token).first()
+
+    if not reset_token:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    if reset_token.is_used:
+        raise HTTPException(status_code=400, detail="This reset token has already been used")
+
+    # 🛠 Fetch the user
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # 🛠 Ensure new password is different from old password
     if verify_password(data.new_password, user.password_hash):
         raise HTTPException(status_code=400, detail="New password cannot be the same as the old password")
 
+    # 🛠 Hash & update new password
     user.password_hash = hash_password(data.new_password)
-    db.commit()
 
-    redis_client.delete(f"reset_token:{email}")  # Remove the token from Redis
+    # 🛠 Mark token as used
+    reset_token.is_used = True
+    db.commit()
 
     return {"message": "Password reset successfully. You can now log in."}

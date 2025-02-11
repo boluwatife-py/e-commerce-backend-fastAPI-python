@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
 from core.database import get_db
 from app.crud import get_user_by_email, get_user_by_phone
-from app.models import User
+from app.models import User, PasswordResetToken
 from app.schemas import UserCreate, Token, LoginRequest, TokenRefreshRequest, UserResponse, RequestVerificationLink, PasswordResetRequest, ResetPasswordRequest
 from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token, verify_reset_token
 from core.email_utils import send_verification_email, send_reset_password_email
@@ -140,9 +140,10 @@ def refresh_token(token_data: TokenRefreshRequest):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
 
-def store_reset_token(email: str, token: str):
-    """Store password reset token in Redis with an expiry."""
-    redis_client.setex(f"reset_token:{email}", 1800, token)
+def store_reset_token(db: Session, token: str, email: str):
+    reset_token = PasswordResetToken(token=token, email=email)
+    db.add(reset_token)
+    db.commit()
     
 @router.post("/forgot-password/")
 def forgot_password(
@@ -160,7 +161,7 @@ def forgot_password(
             verify_token(authorization.replace("Bearer ", ""))
             raise HTTPException(status_code=400, detail="You are already logged in")
         except:
-            pass  # If token is invalid, ignore and proceed
+            pass
 
     user = db.query(User).filter(User.email == data.email).first()
     if not user:

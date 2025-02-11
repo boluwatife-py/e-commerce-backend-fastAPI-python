@@ -253,3 +253,12 @@ class Cart(Base):
 
     def __repr__(self):
         return f"<Cart {self.cart_id} - User {self.user_id} - Product {self.product_id}>"
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    token = Column(String, primary_key=True, index=True)  # Unique reset token
+    email = Column(String, index=True)  # Associated email
+    is_used = Column(Boolean, default=False)  # Check if token is used
+    created_at = Column(DateTime, default=datetime.utcnow)  # Timestamp

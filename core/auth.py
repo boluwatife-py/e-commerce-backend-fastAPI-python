@@ -5,10 +5,12 @@ from fastapi.security import OAuth2PasswordBearer
 from core.config import settings
 from jose import jwt, JWTError
 from app.models import User
-from typing import Optional
+from typing import Optional, Annotated
+from sqlalchemy.orm import Session
+from .database import get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -56,24 +58,33 @@ def create_password_reset_token(email: str) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
-    """Decode JWT token and return user object."""
+def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)], 
+    db: Session = Depends(get_db)
+) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        user_id: Optional[int] = payload.get("sub")
+        user_email: Optional[str] = payload.get("sub")
 
-        if user_id is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        if not user_email:
+            raise credentials_exception
 
-        user = User.get(user_id)
+        
+        user = db.query(User).filter(User.email == user_email).first()
 
-        if user is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        if not user:
+            raise credentials_exception
 
         return user
 
     except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise credentials_exception
 
 
 def require_role(required_roles: list[str]):

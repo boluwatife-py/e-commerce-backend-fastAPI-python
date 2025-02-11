@@ -1,21 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Form
 from core.database import get_db
 from app.crud import get_user_by_email, get_user_by_phone
 from app.models import User, PasswordResetToken
-from app.schemas import UserCreate, Token, LoginRequest, TokenRefreshRequest, UserResponse, RequestVerificationLink, PasswordResetRequest, ResetPasswordRequest
-from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token
+from fastapi.security import OAuth2PasswordRequestForm
+from app.schemas import UserCreate, Token, TokenRefreshRequest, UserResponse, RequestVerificationLink, PasswordResetRequest, ResetPasswordRequest
+from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token, oauth2_scheme
 from core.email_utils import send_verification_email, send_reset_password_email
 from sqlalchemy.exc import IntegrityError
 from smtplib import SMTPException
 from pydantic import ValidationError
 from jose import JWTError, ExpiredSignatureError
+from typing import Annotated
 
 
 router = APIRouter()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 responces = {
     422: {
@@ -159,10 +160,13 @@ def verify_account(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-def login(user_data: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == user_data.email).first()
+def login(
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email == form_data.username).first()
 
-    if not user or not verify_password(user_data.password, user.password_hash):
+    if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     access_token = create_access_token({"sub": user.email, "role": user.role})

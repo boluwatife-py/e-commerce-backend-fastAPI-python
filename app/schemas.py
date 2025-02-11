@@ -54,7 +54,7 @@ class ProductCreate(BaseModel):
     stock_quantity: int
     category_id: Optional[int] = None
     brand: Optional[str] = None
-    images: Optional[List[HttpUrl]] = []
+    images: Optional[List] = None
 
     @field_validator("images")
     @classmethod
@@ -66,15 +66,29 @@ class ProductCreate(BaseModel):
     class Config:
         from_attributes = True
 
-
-class ProductResponse(ProductCreate):
+class ProductResponse(BaseModel):
     product_id: int
+    name: str
+    description: Optional[str] = None
+    price: float
+    stock_quantity: int
+    category_id: Optional[int] = None
+    brand: Optional[str] = None
+    images: Optional[List[HttpUrl]] = []
     seller_id: int
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class ReviewResponse(BaseModel):
+    id: int
+    user_id: int
+    rating: int
+    comment: Optional[str] = None
+
 
 # Enum for order status
 class OrderStatus(str, Enum):

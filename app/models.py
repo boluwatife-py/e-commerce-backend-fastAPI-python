@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean
+from sqlalchemy import Column, Integer, String, Enum, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean, JSON
 from sqlalchemy.orm import relationship, validates, session
 from sqlalchemy.sql import func
 from core.database import Base
@@ -47,7 +47,7 @@ class Product(Base):
     category_id = Column(Integer, ForeignKey("categories.category_id", ondelete="SET NULL"), nullable=True)
     seller_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     brand = Column(String(100))
-    image_url = Column(String(255))
+    images = Column(JSON, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 

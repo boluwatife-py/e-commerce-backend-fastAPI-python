@@ -1,8 +1,9 @@
-from pydantic import BaseModel, EmailStr, condecimal, validator, Field
+from pydantic import BaseModel, EmailStr, condecimal, validator, Field, HttpUrl, field_validator
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, List, Annotated
 from enum import Enum
 import re
+from datetime import datetime
 
 
 # User Schema
@@ -41,11 +42,36 @@ class ProductBase(BaseModel):
     stock_quantity: int
     category_id: Optional[int]
 
-class ProductCreate(ProductBase):
-    pass
+class ProductCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: Annotated[Decimal, Field(
+        decimal_places=2,
+        max_digits=12,
+        nullable=False
+    )] = Field(nullable=False)
+    
+    stock_quantity: int
+    category_id: Optional[int] = None
+    brand: Optional[str] = None
+    images: Optional[List[HttpUrl]] = []
 
-class ProductResponse(ProductBase):
+    @field_validator("images")
+    @classmethod
+    def validate_images(cls, images):
+        if len(images) > 10:
+            raise ValueError("A product can have a maximum of 10 images")
+        return images
+    
+    class Config:
+        from_attributes = True
+
+
+class ProductResponse(ProductCreate):
     product_id: int
+    seller_id: int
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

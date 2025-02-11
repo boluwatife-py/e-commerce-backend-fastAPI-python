@@ -1,29 +1,41 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordBearer
 from core.database import get_db
-from app.crud import get_user_by_email, get_user_by_phone
-from app.models import User, PasswordResetToken
-from app.schemas import ProductBase
-from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token
-from core.email_utils import send_verification_email, send_reset_password_email
+from app.models import Product
+from app.schemas import ProductBase, ProductCreate
+from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token, oauth2_scheme, require_role
 
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
+@router.post("/products/", status_code=status.HTTP_201_CREATED)
+def create_product(product: ProductCreate, db: Session = Depends(get_db), user=Depends(require_role(["seller"]))):
+    """Create a new product (Only sellers can do this)."""
+
+    new_product = Product(
+        name=product.name,
+        description=product.description,
+        price=product.price,
+        stock_quantity=product.stock_quantity,
+        category_id=product.category_id,
+        brand=product.brand,
+        images=product.images,
+    )
+
+    db.add(new_product)
+    db.commit()
+    db.refresh(new_product)
+    
+    return {"message": "Product created successfully", "product": new_product}
+    
 
 
 @router.get('/{product_id}', response_model=ProductBase)
 def view_product(product_id: int, db: Session = Depends(get_db)):
-    # product = db.query(Product).filter(Product.id == product_id).first()
+    product = db.query(Product).filter(Product.id == product_id).first()
     
-    # if not product:
-    #     raise HTTPException(status_code=404, detail="Product not found")
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
 
-    return ProductBase(
-        name = "Laptop",
-        description = "A powerful laptop",
-        price = 1200.99,
-        stock_quantity =  10,
-        category_id = 1
-    )
+    return ProductBase.model_validate(product, from_attributes=True)

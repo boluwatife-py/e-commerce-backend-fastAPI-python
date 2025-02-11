@@ -7,6 +7,11 @@ from app.models import User, PasswordResetToken
 from app.schemas import UserCreate, Token, LoginRequest, TokenRefreshRequest, UserResponse, RequestVerificationLink, PasswordResetRequest, ResetPasswordRequest
 from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token
 from core.email_utils import send_verification_email, send_reset_password_email
+from sqlalchemy.exc import IntegrityError
+from smtplib import SMTPException
+from pydantic import ValidationError
+from jose import JWTError, ExpiredSignatureError
+
 
 router = APIRouter()
 
@@ -29,6 +34,7 @@ responces = {
     }
 }
 
+
 @router.post("/signup/", response_model=UserResponse, responses=responces)
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     try:
@@ -39,30 +45,51 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Phone already registered")
 
         user.password = hash_password(user.password)
-        db_user = User(email=user.email, first_name=user.first_name, last_name=user.last_name, password_hash=user.password, phone=user.phone)
+        
+        db_user = User(
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            password_hash=user.password,
+            phone=user.phone
+        )
         db.add(db_user)
-
+        
         verification_token = create_verification_token(user.email)
         
-        success, message = send_reset_password_email(user.email, verification_token)
-
-        if not success:
-            raise HTTPException(status_code=503, detail=message)
+        try:
+            success, message = send_reset_password_email(user.email, verification_token)
+            if not success:
+                raise SMTPException(message)
+        except SMTPException as e:
+            db.rollback()
+            raise HTTPException(status_code=503, detail=f"Email service error: {str(e)}")
 
         db.commit()
         db.refresh(db_user)
 
-        return UserResponse(
-            email=db_user.email
-        )
+        return UserResponse(email=db_user.email)
 
-    except HTTPException:
+    except HTTPException as e:
         db.rollback()
         raise
 
-    except Exception:
+    except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Something went wrong. Please try again.") 
+        raise HTTPException(status_code=400, detail="Database constraint violated. User might already exist.")
+
+    except ValidationError as e:
+        db.rollback()
+        raise HTTPException(status_code=422, detail="Invalid data format")
+
+    except ValueError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Unexpected value error")
+
+    except Exception as e:
+        db.rollback()
+        print(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
 
 
 @router.post("/request-verification-link/")
@@ -76,14 +103,22 @@ def request_new_verification_link(data: RequestVerificationLink, db: Session = D
             raise HTTPException(status_code=400, detail="Email is already verified")
 
         verification_token = create_verification_token(user.email)
-        send_verification_email(user.email, verification_token)
+
+        try:
+            send_verification_email(user.email, verification_token)
+        except SMTPException as e:
+            raise HTTPException(status_code=503, detail=f"Email service error: {str(e)}")
 
         return {"message": "A new verification link has been sent to your email"}
 
-    except HTTPException as http_exc:
-        raise http_exc
+    except HTTPException:
+        raise
 
-    except Exception:
+    except ValidationError:
+        raise HTTPException(status_code=422, detail="Invalid request format")
+
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
 
 
@@ -101,16 +136,25 @@ def verify_account(token: str, db: Session = Depends(get_db)):
         if user.is_active:
             return {"message": "Email is already verified"}
 
+        # Activate user account
         user.is_active = True
-        db.commit()
+
+        try:
+            db.commit()
+            db.refresh(user)  # Ensure latest changes are reflected
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database error while verifying the account.")
 
         return {"message": "Email successfully verified. You can now log in.", 'redirect_url': '/'}
 
-    except HTTPException as http_exc:
-        raise http_exc
-
-    except Exception:
+    except HTTPException:
         db.rollback()
+        raise  # Re-raise known FastAPI errors
+
+    except Exception as e:
+        db.rollback()
+        print(f"Unexpected error: {str(e)}")  # Replace with logging in production
         raise HTTPException(status_code=500, detail="An error occurred while verifying the account.")
 
 
@@ -153,29 +197,42 @@ def forgot_password(
     data: PasswordResetRequest, 
     db: Session = Depends(get_db), 
     authorization: str = Header(None)  # Token in the header
-    ):
+):
     """
     Allows only unauthenticated users to request a password reset.
     If a valid token is provided in the Authorization header, reject the request.
     """
 
+    # Check if the user is already authenticated
     if authorization:
         try:
             verify_token(authorization.replace("Bearer ", ""))
             raise HTTPException(status_code=400, detail="You are already logged in")
-        except:
-            pass
+        except Exception:
+            pass  # Ignore invalid token errors and continue
 
+    # Retrieve user from database
     user = db.query(User).filter(User.email == data.email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    reset_token = create_password_reset_token(user.email)
-    store_reset_token(db, reset_token, user.email)
-    
-    success, message = send_reset_password_email(user.email, reset_token)
-    if not success:
-        raise HTTPException(status_code=503, detail=message)
+    # Generate and store reset token
+    try:
+        reset_token = create_password_reset_token(user.email)
+        store_reset_token(db, reset_token, user.email)
+        db.commit()  # Ensure token storage is saved
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to generate password reset token")
+
+    # Send reset email
+    try:
+        success, message = send_reset_password_email(user.email, reset_token)
+        if not success:
+            raise SMTPException(message)
+    except SMTPException as e:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=f"Email service error: {str(e)}")
 
     return {"message": "A password reset link has been sent to your email"}
 
@@ -183,38 +240,58 @@ def forgot_password(
 @router.post("/reset-password/")
 def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
     try:
-        # 🛠 Verify token
-        payload = verify_token(data.token)
-        email = payload.get("sub")
-        if not email:
+        try:
+            payload = verify_token(data.token)
+            email = payload.get("sub")
+            if not email:
+                raise HTTPException(status_code=400, detail="Invalid token")
+        except ExpiredSignatureError:
+            raise HTTPException(status_code=400, detail="Token has expired")
+        except JWTError:
             raise HTTPException(status_code=400, detail="Invalid token")
 
-    except:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
+        
+        reset_token = db.query(PasswordResetToken).filter_by(token=data.token).with_for_update().first()
 
-    # 🛠 Find token in the database
-    reset_token = db.query(PasswordResetToken).filter_by(token=data.token).first()
+        if not reset_token:
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
 
-    if not reset_token:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
+        if reset_token.is_used:
+            raise HTTPException(status_code=400, detail="This reset token has already been used")
 
-    if reset_token.is_used:
-        raise HTTPException(status_code=400, detail="This reset token has already been used")
+        
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    # 🛠 Fetch the user
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        
+        if verify_password(data.new_password, user.password_hash):
+            raise HTTPException(status_code=400, detail="New password cannot be the same as the old password")
 
-    # 🛠 Ensure new password is different from old password
-    if verify_password(data.new_password, user.password_hash):
-        raise HTTPException(status_code=400, detail="New password cannot be the same as the old password")
+        
+        if len(data.new_password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
 
-    # 🛠 Hash & update new password
-    user.password_hash = hash_password(data.new_password)
+        
+        user.password_hash = hash_password(data.new_password)
 
-    # 🛠 Mark token as used
-    reset_token.is_used = True
-    db.commit()
+        
+        reset_token.is_used = True
 
-    return {"message": "Password reset successfully. You can now log in."}
+        try:
+            db.commit()
+            db.refresh(user)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database error while updating password")
+
+        return {"message": "Password reset successfully. You can now log in."}
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
+        print(f"Unexpected error: {str(e)}")  # Replace with proper logging
+        raise HTTPException(status_code=500, detail="An error occurred while resetting the password.")

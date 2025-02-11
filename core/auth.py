@@ -3,7 +3,6 @@ from passlib.context import CryptContext
 from fastapi import HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from core.config import settings
-from core.redis import redis_client
 from jose import jwt, JWTError
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -55,11 +54,11 @@ def create_password_reset_token(email: str) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def verify_reset_token(token: str) -> str:
-    """Check if the reset token is valid."""
-    for key in redis_client.scan_iter("reset_token:*"):
-        if redis_client.get(key) == token:
-            email = key.split(":")[1]  # Extract email from Redis key
-            return email
-    return None
+# def verify_reset_token(token: str) -> str:
+#     """Check if the reset token is valid."""
+#     for key in redis_client.scan_iter("reset_token:*"):
+#         if redis_client.get(key) == token:
+#             email = key.split(":")[1]  # Extract email from Redis key
+#             return email
+#     return None
     

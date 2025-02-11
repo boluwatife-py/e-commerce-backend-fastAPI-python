@@ -17,7 +17,7 @@ def send_verification_email(email: str, token: str):
 
     try:
         with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT) as server:
-            server.starttls()
+            # server.starttls()
             server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
             server.sendmail(settings.SMTP_USERNAME, email, msg.as_string())
             return True, "Email sent successfully"
@@ -42,7 +42,7 @@ def send_reset_password_email(to_email, reset_token):
 
     try:
         with smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT, timeout=10) as server:
-            server.starttls()
+            # server.starttls()
             server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
             server.send_message(msg)
         return True, "Email sent successfully"

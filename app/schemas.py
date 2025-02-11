@@ -4,18 +4,6 @@ from typing import Optional
 from enum import Enum
 import re
 
-# Enum for order status
-class OrderStatus(str, Enum):
-    pending = "pending"
-    shipped = "shipped"
-    delivered = "delivered"
-    cancelled = "cancelled"
-
-# Enum for payment status
-class PaymentStatus(str, Enum):
-    pending = "pending"
-    completed = "completed"
-    failed = "failed"
 
 # User Schema
 class UserBase(BaseModel):
@@ -40,9 +28,12 @@ class UserCreate(UserBase):
             raise ValueError("Password must contain at least one uppercase letter, one number, one special character, and be at least 8 characters long.")
         return v
 
-
 class UserResponse(BaseModel):
     email: EmailStr = Field(..., example="example@example.com")
+
+
+class RequestVerificationLink(BaseModel):
+    email: EmailStr = Field(..., example="email@example.com")
 
 class ProductBase(BaseModel):
     name: str
@@ -59,6 +50,20 @@ class ProductResponse(ProductBase):
 
     class Config:
         from_attributes = True
+
+# Enum for order status
+class OrderStatus(str, Enum):
+    pending = "pending"
+    shipped = "shipped"
+    delivered = "delivered"
+    cancelled = "cancelled"
+
+# Enum for payment status
+class PaymentStatus(str, Enum):
+    pending = "pending"
+    completed = "completed"
+    failed = "failed"
+
 
 
 class OrderBase(BaseModel):
@@ -115,8 +120,15 @@ class LoginRequest(BaseModel):
     password: str
     
 class TokenRefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(..., example='xxxxxx.xxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxx')
 
 class TokenRefreshResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., example="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+    new_password: str = Field(..., example="Secure@123")

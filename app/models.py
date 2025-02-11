@@ -1,7 +1,10 @@
 from sqlalchemy import Column, Integer, String, Enum, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean
 from sqlalchemy.orm import relationship, validates, session
 from sqlalchemy.sql import func
-from app.database import Base
+from core.database import Base
+from sqlalchemy import Column, String, Boolean, DateTime
+from datetime import datetime
+
 
 class User(Base):
     __tablename__ = "users"

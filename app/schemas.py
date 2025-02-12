@@ -78,6 +78,7 @@ class ProductResponse(BaseModel):
     seller_id: int
     created_at: datetime
     updated_at: datetime
+    reviews: List
 
     class Config:
         from_attributes = True

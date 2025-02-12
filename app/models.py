@@ -31,6 +31,7 @@ class User(Base):
     reviews = relationship("Review", back_populates="user", cascade="all, delete-orphan")
     wishlists = relationship("Wishlist", back_populates="user", cascade="all, delete-orphan")
     cart = relationship("Cart", back_populates="user", cascade="all, delete-orphan")
+    
 
     def __repr__(self):
         return f"<User {self.email} ({self.role})>"
@@ -57,13 +58,6 @@ class Product(Base):
     reviews = relationship("Review", back_populates="product", cascade="all, delete-orphan")
     wishlists = relationship("Wishlist", back_populates="product", cascade="all, delete-orphan")
     cart = relationship("Cart", back_populates="product", cascade="all, delete-orphan")
-
-    @validates("seller_id")
-    def validate_seller(self, key, seller_id):
-        seller = session.query(User).filter_by(user_id=seller_id).first()
-        if not seller or seller.role != "seller":
-            raise ValueError("Only sellers can add products")
-        return seller_id
 
     def __repr__(self):
         return f"<Product {self.name} (${self.price}) - Seller ID: {self.seller_id}>"

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Security
 from sqlalchemy.orm import Session
 from fastapi import Form
 from core.database import get_db
@@ -6,13 +6,14 @@ from app.crud import get_user_by_email, get_user_by_phone
 from app.models import User, PasswordResetToken
 from fastapi.security import OAuth2PasswordRequestForm
 from app.schemas import UserCreate, Token, TokenRefreshRequest, UserResponse, RequestVerificationLink, PasswordResetRequest, ResetPasswordRequest
-from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token, oauth2_scheme
+from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token, require_role
 from core.email_utils import send_verification_email, send_reset_password_email
 from sqlalchemy.exc import IntegrityError
 from smtplib import SMTPException
 from pydantic import ValidationError
 from jose import JWTError, ExpiredSignatureError
-from typing import Annotated
+from typing import Annotated, Optional
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 
 router = APIRouter()
@@ -198,34 +199,37 @@ def store_reset_token(db: Session, token: str, email: str):
     
 @router.post("/forgot-password/")
 def forgot_password(
-    data: PasswordResetRequest, 
-    db: Session = Depends(get_db), 
-    authorization: str = Header(None)  # Token in the header
+    data: PasswordResetRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None)
 ):
     """
     Allows only unauthenticated users to request a password reset.
     If a valid token is provided in the Authorization header, reject the request.
     """
-
-    # Check if the user is already authenticated
+    
     if authorization:
+        token = authorization.replace("Bearer ", "")
         try:
-            verify_token(authorization.replace("Bearer ", ""))
-            raise HTTPException(status_code=400, detail="You are already logged in")
+            payload = verify_token(token)
+            if payload:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You are already logged in. Logout to reset your password."
+                )
         except Exception:
-            pass  # Ignore invalid token errors and continue
+            pass
 
-    # Retrieve user from database
     user = db.query(User).filter(User.email == data.email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Generate and store reset token
+    
     try:
         reset_token = create_password_reset_token(user.email)
         store_reset_token(db, reset_token, user.email)
         db.commit()  # Ensure token storage is saved
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to generate password reset token")
 
@@ -233,13 +237,12 @@ def forgot_password(
     try:
         success, message = send_reset_password_email(user.email, reset_token)
         if not success:
-            raise SMTPException(message)
-    except SMTPException as e:
+            raise HTTPException(status_code=503, detail=f"Email service error: {message}")
+    except Exception as e:
         db.rollback()
         raise HTTPException(status_code=503, detail=f"Email service error: {str(e)}")
 
     return {"message": "A password reset link has been sent to your email"}
-
 
 @router.post("/reset-password/")
 def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):

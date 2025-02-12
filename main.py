@@ -3,12 +3,44 @@ from app.exceptions import validation_exception_handler, authentication_exceptio
 from fastapi.exceptions import RequestValidationError
 from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 
 
 app = FastAPI(title="E-Commerce API")
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(HTTPException, authentication_exception_handler)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/offline-docs", include_in_schema=False)
+def get_offline_docs():
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>API Documentation</title>
+        <link rel="stylesheet" type="text/css" href="/static/swagger-ui/swagger-ui.css">
+        <script src="/static/swagger-ui/swagger-ui-bundle.js"></script>
+        <script src="/static/swagger-ui/swagger-ui-standalone-preset.js"></script>
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script>
+            const ui = SwaggerUIBundle({
+                url: '/openapi.json',  // Uses local OpenAPI schema
+                dom_id: '#swagger-ui',
+                presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+                layout: "StandaloneLayout"
+            });
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+
 
 
 ALLOWED_ORIGINS = [
@@ -33,6 +65,7 @@ def root():
 
 
 from app.routes import auth, products, user
+
 
 app.include_router(auth.router, prefix="/auth")
 app.include_router(products.router, prefix="/products")

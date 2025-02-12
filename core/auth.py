@@ -1,13 +1,15 @@
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from fastapi import HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from core.config import settings
 from jose import jwt, JWTError
 from app.models import User
 from typing import Optional, Annotated
 from sqlalchemy.orm import Session
 from .database import get_db
+from fastapi import Form
+from pydantic import EmailStr
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -81,6 +83,8 @@ def get_current_user(
         if not user:
             raise credentials_exception
 
+        if not user.is_active:
+            raise HTTPException(status_code = status.HTTp_401_UNAUTHORIZED, detail="User account is not yet activated", headers={"WWW-Authenticate": "Bearer"})
         return user
 
     except JWTError:
@@ -95,3 +99,12 @@ def require_role(required_roles: list[str]):
         return user
 
     return role_checker
+
+
+class OAuth2PasswordRequestFormWithEmail(OAuth2PasswordRequestForm):
+    def __init__(
+        self,
+        email: EmailStr = Form(...),
+        password: str = Form(...)
+    ):
+        super().__init__(username=email, password=password)

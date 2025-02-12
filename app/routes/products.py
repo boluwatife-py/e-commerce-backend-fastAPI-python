@@ -6,6 +6,8 @@ from app.schemas import ProductResponse, ProductCreate, ReviewResponse, ProductB
 from core.auth import require_role
 from typing import Annotated, Optional, List
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 
@@ -13,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[ProductBase])
-def get_products(
+async def get_products(
     db: Session = Depends(get_db),
     category_id: Optional[int] = None,
     brand: Optional[str] = None,
@@ -63,7 +65,7 @@ def get_products(
 
 
 @router.get("/{product_id}/", response_model=ProductResponse)
-def get_product(product_id: int, db: Session = Depends(get_db)):
+async def get_product(product_id: int, db: Session = Depends(get_db)):
     """Retrieve a single product by ID (with reviews & user ID)."""
     try:
         product = db.query(Product).filter(Product.id == product_id).first()
@@ -102,8 +104,55 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="An unexpected error occurred while retrieving the product.")
 
 
+@router.get("/search/")
+async def search_products(
+    query: str,
+    db: AsyncSession = Depends(get_db),
+    limit: int = 10,
+    offset: int = 0
+):
+    """Search for products by name, brand, category, seller name, or description."""
+    query = query.strip()
+    
+    print(query)
+    if not query:
+        raise HTTPException(status_code=400, detail="Search query cannot be empty")
+
+    try:
+        stmt = (
+            select(Product)
+            .join(User, User.user_id == Product.seller_id)
+            .filter(
+                (Product.name.ilike(f"%{query}%")) |
+                (Product.brand.ilike(f"%{query}%")) |
+                (Product.description.ilike(f"%{query}%")) |
+                (Product.category_id == query) |
+                (User.first_name.ilike(f"%{query}%")) |
+                (User.last_name.ilike(f"%{query}%"))
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+
+        result = await db.execute(stmt)
+        products = result.scalars().all()
+
+        
+        if not products:
+            raise HTTPException(status_code=404, detail="No matching products found")
+
+        return products
+
+    except HTTPException as http_exc:
+        raise http_exc
+
+    except Exception as e:
+        print(f"Error searching products: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while searching for products.")
+
+
 @router.post("/new/", response_model=ProductResponse)
-def create_product(
+async def create_product(
     product: ProductCreate,
     current_user: Annotated[User, Depends(require_role(['merchant']))],
     db: Session = Depends(get_db),
@@ -153,7 +202,7 @@ def create_product(
 
 
 @router.get("/{product_id}/edit/", response_model=ProductCreate)
-def get_product_for_edit(
+async def get_product_for_edit(
     product_id: int, 
     current_user: Annotated[User, Depends(require_role(['merchant']))], 
     db: Session = Depends(get_db)
@@ -189,7 +238,7 @@ def get_product_for_edit(
 
 
 @router.put("/{product_id}/edit/", response_model=ProductResponse)
-def update_product(
+async def update_product(
     product_id: int, 
     product_data: ProductCreate,
     current_user: Annotated[User, Depends(require_role(['merchant']))], 
@@ -237,11 +286,34 @@ def update_product(
 
 
 @router.delete("/{product_id}/")
-def delete_product(product_id: int, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+async def delete_product(
+    product_id: int, 
+    current_user: Annotated[User, Depends(require_role(['merchant']))], 
+    db: Session = Depends(get_db)
+):
+    """
+    Allows only the product owner (seller) to delete the product.
+    Ensures proper error handling.
+    """
+    try:
+        product = db.query(Product).filter(Product.product_id == product_id).first()
 
-    db.delete(product)
-    db.commit()
-    return {"message": "Product deleted successfully"}
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        
+        if product.seller_id != current_user.user_id:
+            raise HTTPException(status_code=403, detail="You do not have permission to delete this product")
+
+        db.delete(product)
+        db.commit()
+        return {"message": "Product deleted successfully"}
+
+    except HTTPException as http_exc:
+        raise http_exc
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error deleting product: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while deleting the product.")
+

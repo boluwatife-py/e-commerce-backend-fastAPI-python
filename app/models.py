@@ -1,9 +1,10 @@
-from sqlalchemy import Column, Integer, String, Enum, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean, JSON
 from sqlalchemy.orm import relationship, validates, session
 from sqlalchemy.sql import func
 from core.database import Base
 from sqlalchemy import Column, String, Boolean, DateTime
 from datetime import datetime
+from sqlalchemy.dialects import postgresql
 
 
 class User(Base):
@@ -22,7 +23,7 @@ class User(Base):
     country = Column(String(50))
     is_active = Column(Boolean, default=False, nullable=False)
 
-    role = Column(Enum("admin", "buyer", "merchant", name="user_roles"), default="buyer", nullable=False)
+    role = Column(postgresql.ENUM("admin", "buyer", "merchant", name="user_roles", create_type=False), default="buyer", nullable=False, )
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     products = relationship("Product", back_populates="seller", cascade="all, delete", lazy="dynamic")
@@ -32,16 +33,16 @@ class User(Base):
     wishlists = relationship("Wishlist", back_populates="user", cascade="all, delete-orphan")
     cart = relationship("Cart", back_populates="user", cascade="all, delete-orphan")
 
-    # Corrected relationships
+    
     reports_received = relationship(
         "ProductReport",
-        foreign_keys='[ProductReport.seller_id]',  # No quotes
+        foreign_keys='[ProductReport.seller_id]',
         back_populates="reported_seller"
     )
 
     reports_made = relationship(
         "ProductReport",
-        foreign_keys='[ProductReport.user_id]',  # Fixed incorrect reference
+        foreign_keys='[ProductReport.user_id]',
         back_populates="reported_by"
     )
 
@@ -72,6 +73,7 @@ class Product(Base):
     wishlists = relationship("Wishlist", back_populates="product", cascade="all, delete-orphan")
     cart = relationship("Cart", back_populates="product", cascade="all, delete-orphan")
 
+    reports = relationship("ProductReport", back_populates="product", cascade="all, delete-orphan")
     def __repr__(self):
         return f"<Product {self.name} (${self.price}) - Seller ID: {self.seller_id}>"
     
@@ -84,10 +86,10 @@ class Category(Base):
     description = Column(Text)
     parent_category_id = Column(Integer, ForeignKey("categories.category_id", ondelete="SET NULL"), nullable=True)
 
-    # Self-referencing relationship
+    
     parent_category = relationship("Category", remote_side=[category_id], backref="subcategories")
 
-    # Relationship with Products
+    
     products = relationship("Product", back_populates="category")
 
     def __repr__(self):
@@ -101,8 +103,8 @@ class Order(Base):
     user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     total_amount = Column(DECIMAL(10, 2), nullable=False)
     
-    order_status = Column(Enum("pending", "shipped", "delivered", "cancelled", "returned", name="order_status"), default="pending", nullable=False)
-    payment_status = Column(Enum("pending", "completed", "failed", name="payment_status"), default="pending", nullable=False)
+    order_status = Column(postgresql.ENUM("pending", "shipped", "delivered", "cancelled", "returned", name="order_status", create_type=False), default="pending", nullable=False)
+    order_payment_status = Column(postgresql.ENUM("pending", "completed", "failed", name="order_payment_status", create_type=False), default="pending", nullable=False)
 
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
@@ -146,8 +148,8 @@ class Payment(Base):
     user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     amount = Column(DECIMAL(10, 2), nullable=False)
 
-    payment_method = Column(Enum("credit_card", "paypal", "bank_transfer", "crypto", name="payment_methods"), nullable=False)
-    payment_status = Column(Enum("pending", "completed", "failed", name="payment_status"), default="pending", nullable=False)
+    payment_method = Column(postgresql.ENUM("credit_card", "paypal", "bank_transfer", "crypto", name="payment_methods", create_type=False), nullable=False)
+    payment_status = Column(postgresql.ENUM("pending", "completed", "failed", name="payment_status", create_type=False), default="pending", nullable=False)
 
     transaction_id = Column(String(255), unique=True, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
@@ -169,7 +171,7 @@ class Shipping(Base):
     carrier = Column(String(100), nullable=True)
     estimated_delivery_date = Column(Date, nullable=True)
 
-    shipping_status = Column(Enum("pending", "shipped", "delivered", "returned", name="shipping_status"), default="pending", nullable=False)
+    shipping_status = Column(postgresql.ENUM("pending", "shipped", "delivered", "returned", name="shipping_status", create_type=False), default="pending", nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     # Relationship
@@ -226,7 +228,7 @@ class Coupon(Base):
     valid_to = Column(Date, nullable=True)
     min_order_value = Column(DECIMAL(10, 2), default=0)
     max_discount_value = Column(DECIMAL(10, 2), nullable=True)
-    status = Column(Enum("active", "expired", "disabled", name="status"), default="active", nullable=False)
+    coupon_status = Column(postgresql.ENUM("active", "expired", "disabled", name="coupon_status", create_type=False), default="active", nullable=False)
     
     
     orders = relationship("Order", back_populates="coupon")
@@ -262,15 +264,6 @@ class Cart(Base):
         return f"<Cart {self.cart_id} - User {self.user_id} - Product {self.product_id}>"
 
 
-class PasswordResetToken(Base):
-    __tablename__ = "password_reset_tokens"
-
-    token = Column(String, primary_key=True, index=True)  # Unique reset token
-    email = Column(String, index=True)  # Associated email
-    is_used = Column(Boolean, default=False)  # Check if token is used
-    created_at = Column(DateTime, default=datetime.utcnow)  # Timestamp
-
-
 class ProductReport(Base):
     __tablename__ = "product_reports"
 
@@ -285,3 +278,22 @@ class ProductReport(Base):
     product = relationship("Product", back_populates="reports")
     reported_by = relationship("User", foreign_keys=[user_id], back_populates="reports_made")  # User who submitted the report
     reported_seller = relationship("User", foreign_keys=[seller_id], back_populates="reports_received")  # Seller who got reported
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    token = Column(String, primary_key=True, index=True)  # Unique reset token
+    email = Column(String, index=True)  # Associated email
+    is_used = Column(Boolean, default=False)  # Check if token is used
+    created_at = Column(DateTime, default=datetime.utcnow)  # Timestamp
+
+
+class VerificationToken(Base):
+    __tablename__ = 'verification_tokens'
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, index=True, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())

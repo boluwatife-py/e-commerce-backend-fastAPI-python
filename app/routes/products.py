@@ -1,14 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
 from core.database import get_db
 from app.models import Product, User, Category
 from app.schemas import ProductResponse, ProductCreate, ReviewResponse
 from core.auth import require_role
 from typing import Annotated, Optional, List
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from sqlalchemy import select
 
 
 router = APIRouter()
@@ -85,7 +83,7 @@ async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
             description=product.description,
             price=product.price,
             stock_quantity=product.stock_quantity,
-            category_name=product.category_name,
+            category_id=product.category_id,
             brand=product.brand,
             images=product.images,
             seller_id=product.seller_id,
@@ -95,39 +93,37 @@ async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
         )
 
     except HTTPException as http_exc:
-        raise http_exc  # Preserve existing HTTP exceptions
+        raise http_exc
 
     except Exception as e:
         print(f"Error retrieving product: {e}")  # Log error for debugging
         raise HTTPException(status_code=500, detail="An unexpected error occurred while retrieving the product.")
 
 
-@router.post("/new", response_model=ProductResponse)
+@router.post("/new/", response_model=ProductResponse)
 async def create_product(
     product: ProductCreate,
     current_user: Annotated[User, Depends(require_role(['merchant']))],
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        # Ensure valid price and stock quantity
         if product.price <= 0:
             raise HTTPException(status_code=400, detail="Price must be greater than 0")
         if product.stock_quantity < 0:
             raise HTTPException(status_code=400, detail="Stock quantity cannot be negative")
 
-        # Ensure category exists if provided
-        if product.category_name:
-            category = db.query(Category).filter(Category.category_name == product.category_name).first()
+        category = None
+        if product.category_id != None:
+            category = db.query(Category).filter(Category.category_id == product.category_id).first()
             if not category:
                 raise HTTPException(status_code=404, detail="Category not found")
 
-        # Create the product
         new_product = Product(
             name=product.name,
             description=product.description,
             price=product.price,
             stock_quantity=product.stock_quantity,
-            category_name=product.category_name,
+            category_id=product.category_id if category else None,
             seller_id=current_user.user_id,
             brand=product.brand,
             images=product.images
@@ -138,21 +134,27 @@ async def create_product(
         db.refresh(new_product)
 
         return new_product
-
+    
+    except HTTPException:
+        raise
+    
     except IntegrityError:
         db.rollback()
+        print(e)
         raise HTTPException(status_code=400, detail="Database integrity error. Check your inputs.")
 
     except SQLAlchemyError as e:
         db.rollback()
+        print(e)
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"{str(e)}")
+        print(e)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occured, please try again later")
 
 
-@router.get("/{product_id}/edit", response_model=ProductCreate)
+@router.get("/{product_id}/edit/", response_model=ProductCreate)
 async def get_product_for_edit(
     product_id: int, 
     current_user: Annotated[User, Depends(require_role(['merchant']))], 
@@ -163,12 +165,12 @@ async def get_product_for_edit(
     Only the product owner can retrieve it.
     """
     try:
-        product = db.query(Product).filter(Product.id == product_id).first()
+        product = db.query(Product).filter(Product.product_id == product_id).first()
 
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
 
-        if product.seller_id != current_user.id:
+        if product.seller_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="You do not have permission to edit this product")
 
         return ProductCreate(
@@ -176,7 +178,7 @@ async def get_product_for_edit(
             description=product.description,
             price=product.price,
             stock_quantity=product.stock_quantity,
-            category_name=product.category_name,
+            category_id=product.category_id,
             brand=product.brand,
             images=product.images
         )
@@ -185,7 +187,8 @@ async def get_product_for_edit(
         raise http_exc
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail="An unexpected error occurred while retrieving the product. %s" %e)
+        print(e)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while retrieving the product.")
 
 
 @router.put("/{product_id}/edit", response_model=ProductResponse)
@@ -215,7 +218,12 @@ async def update_product(
         
         if product_data.stock_quantity is not None and product_data.stock_quantity < 0:
             raise HTTPException(status_code=400, detail="Stock quantity cannot be negative")
-
+        
+        category = None
+        if product_data.category_id != None:
+            category = db.query(Category).filter(Category.category_id == product_data.category_id).first()
+            if not category:
+                raise HTTPException(status_code=404, detail="Category not found")
         
         for field in product_data.__dict__:
             value = getattr(product_data, field)
@@ -236,7 +244,7 @@ async def update_product(
         raise HTTPException(status_code=500, detail="An error occurred while updating the product.")
 
 
-@router.delete("/{product_id}")
+@router.delete("/{product_id}/")
 async def delete_product(
     product_id: int, 
     current_user: Annotated[User, Depends(require_role(['merchant']))], 

@@ -17,7 +17,7 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 from core.database import Base
-from app.models import User, Product, Category, Order, OrderItem, Payment, Shipping, Review, Wishlist, Coupon, Cart
+from app import models
 
 target_metadata = Base.metadata
 

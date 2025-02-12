@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from core.database import get_db
 from app.crud import get_user_by_email, get_user_by_phone
-from app.models import User, PasswordResetToken
+from app.models import User, PasswordResetToken, VerificationToken
 from fastapi.security import OAuth2PasswordRequestForm
 from app.schemas import UserCreate, Token, TokenRefreshRequest, UserResponse, RequestVerificationLink, PasswordResetRequest, ResetPasswordRequest
-from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token, OAuth2PasswordRequestFormWithEmail
+from core.auth import hash_password, verify_password, create_access_token, create_refresh_token, verify_token, create_verification_token, verify_verification_token, create_password_reset_token
 from core.email_utils import send_verification_email, send_reset_password_email
 from sqlalchemy.exc import IntegrityError
 from smtplib import SMTPException
@@ -53,15 +53,29 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
             password_hash=user.password,
             phone=user.phone
         )
-        db.add(db_user)
         
-        verification_token = create_verification_token(user.email)
+        db.add(db_user)
+        print(db_user.user_id)
+        # db.query(VerificationToken).filter(
+        #     VerificationToken.user_id == db_user.user_id,
+        #     VerificationToken.is_active == True
+        # ).update({"is_active": False})
+        try:
+            verification_token = create_verification_token(user.email)
+            # token_entry = VerificationToken(
+            #         token=verification_token,
+            #         user_id=db_user.user_id
+            #     )
+            # db.add(token_entry)
+        except Exception as e:
+            print(e)
+            raise HTTPException(status_code=500, detail="Failed to generate verification token")
         
         try:
-            success, message = send_reset_password_email(user.email, verification_token)
+            success, message = send_verification_email(user.email, verification_token)
             if not success:
-                raise SMTPException(message)
-        except SMTPException as e:
+                raise HTTPException(status_code=503, detail=f"Email service error: {message}")
+        except Exception as e:
             db.rollback()
             raise HTTPException(status_code=503, detail=f"Email service error: {str(e)}")
 
@@ -102,60 +116,87 @@ async def request_new_verification_link(data: RequestVerificationLink, db: Sessi
         if user.is_active:
             raise HTTPException(status_code=400, detail="Email is already verified")
 
-        verification_token = create_verification_token(user.email)
+        
+        db.query(VerificationToken).filter(
+            VerificationToken.user_id == user.user_id,
+            VerificationToken.is_active == True
+        ).update({"is_active": False})
 
+        
+        new_token = create_verification_token(user.email)
+        token_entry = VerificationToken(
+            token=new_token,
+            user_id=user.user_id
+        )
+
+        db.add(token_entry)
+        db.commit()
+
+        
         try:
-            send_verification_email(user.email, verification_token)
-        except SMTPException as e:
+            success, message = send_verification_email(user.email, new_token)
+            if not success:
+                raise HTTPException(status_code=503, detail=f"Email service error: {message}")
+        except Exception as e:
+            db.rollback()
             raise HTTPException(status_code=503, detail=f"Email service error: {str(e)}")
 
         return {"message": "A new verification link has been sent to your email"}
 
-    except HTTPException:
-        raise
-
-    except ValidationError:
-        raise HTTPException(status_code=422, detail="Invalid request format")
+    except HTTPException as e:
+        db.rollback()
+        raise e
 
     except Exception as e:
+        db.rollback()
         print(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
+
 
 
 @router.get('/verify-email/')
 async def verify_account(token: str, db: Session = Depends(get_db)):
     try:
         email = verify_verification_token(token)
+
         if not email:
             raise HTTPException(status_code=400, detail="Invalid or expired token")
 
-        user = db.query(User).filter(User.email == email).first()
+        # Find token in DB and check validity
+        token_entry = db.query(VerificationToken).filter(
+            VerificationToken.token == token,
+            VerificationToken.is_active == True
+        ).first()
+
+        if not token_entry:
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+        user = db.query(User).filter(User.user_id == token_entry.user_id).first()
+
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
         if user.is_active:
             return {"message": "Email is already verified"}
 
-        # Activate user account
+        # Activate user and disable token
         user.is_active = True
+        token_entry.is_active = False
 
-        try:
-            db.commit()
-            db.refresh(user)  # Ensure latest changes are reflected
-        except IntegrityError:
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Database error while verifying the account.")
+        db.commit()
+        db.refresh(user)
 
-        return {"message": "Email successfully verified. You can now log in.", 'redirect_url': '/'}
+        return {"message": "Email successfully verified. You can now log in."}
 
-    except HTTPException:
+    except HTTPException as e:
         db.rollback()
-        raise  # Re-raise known FastAPI errors
+        raise e
 
     except Exception as e:
         db.rollback()
-        print(f"Unexpected error: {str(e)}")  # Replace with logging in production
+        print(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred while verifying the account.")
+
 
 
 @router.post("/login/", response_model=Token)

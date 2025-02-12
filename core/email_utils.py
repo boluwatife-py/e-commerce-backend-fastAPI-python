@@ -6,7 +6,6 @@ from email.message import EmailMessage
 
 def send_verification_email(email: str, token: str):
     verification_link = f"{settings.BASE_URL}/auth/verify-email?token={token}"
-    
     subject = "Verify Your Email"
     body = f"Click the link to verify your email: {verification_link}\n\nThis link expires in 30 minutes."
 

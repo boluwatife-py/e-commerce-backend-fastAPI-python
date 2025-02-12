@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from core.database import get_db
-from app.models import Product, User
-from app.schemas import ProductResponse, ProductCreate, ReviewResponse
-from core.auth import get_current_user, oauth2_scheme, require_role
+from app.models import User
+from core.auth import require_role
 from typing import Annotated
 
 router = APIRouter()

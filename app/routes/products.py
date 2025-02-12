@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from core.database import get_db
 from app.models import Product, User, Category
-from app.schemas import ProductResponse, ProductCreate, ReviewResponse, ProductBase
+from app.schemas import ProductResponse, ProductCreate, ReviewResponse
 from core.auth import require_role
 from typing import Annotated, Optional, List
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -14,20 +14,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter()
 
 
-@router.get("/", response_model=List[ProductBase])
+@router.get("/", response_model=List[ProductResponse])
 async def get_products(
-    db: Session = Depends(get_db),
-    category_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    category_name: Optional[str] = None,
     brand: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     limit: int = 10,
     offset: int = 0
 ):
-    """Retrieve a list of products with optional filters (category, brand, price range)."""
 
     try:
-        # 🛑 Validate limit and offset
         if limit <= 0 or limit > 100:
             raise HTTPException(status_code=400, detail="Limit must be between 1 and 100")
         if offset < 0:
@@ -35,8 +33,8 @@ async def get_products(
 
         query = db.query(Product)
 
-        if category_id:
-            query = query.filter(Product.category_id == category_id)
+        if category_name:
+            query = query.filter(Product.category_name == category_name)
         if brand:
             query = query.filter(Product.brand == brand)
         if min_price is not None:
@@ -48,7 +46,7 @@ async def get_products(
                 raise HTTPException(status_code=400, detail="Maximum price must be non-negative")
             query = query.filter(Product.price <= max_price)
 
-        # 🏷 Retrieve products with pagination
+        
         products = query.offset(offset).limit(limit).all()
 
         if not products:
@@ -57,18 +55,18 @@ async def get_products(
         return products
 
     except HTTPException as http_exc:
-        raise http_exc  # Preserve HTTP exceptions
+        raise http_exc
 
     except Exception as e:
-        print(f"Error retrieving products: {e}")  # Log error for debugging
+        print(f"Error retrieving products: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching products.")
 
 
 @router.get("/{product_id}/", response_model=ProductResponse)
-async def get_product(product_id: int, db: Session = Depends(get_db)):
+async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
     """Retrieve a single product by ID (with reviews & user ID)."""
     try:
-        product = db.query(Product).filter(Product.id == product_id).first()
+        product = db.query(Product).filter(Product.product_id == product_id).first()
 
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
@@ -82,12 +80,12 @@ async def get_product(product_id: int, db: Session = Depends(get_db)):
             ]
 
         return ProductResponse(
-            product_id=product.id,  # Ensure correct attribute
+            product_id=product.product_id,  # Ensure correct attribute
             name=product.name,
             description=product.description,
             price=product.price,
             stock_quantity=product.stock_quantity,
-            category_id=product.category_id,
+            category_name=product.category_name,
             brand=product.brand,
             images=product.images,
             seller_id=product.seller_id,
@@ -104,58 +102,11 @@ async def get_product(product_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="An unexpected error occurred while retrieving the product.")
 
 
-@router.get("/search/")
-async def search_products(
-    query: str,
-    db: AsyncSession = Depends(get_db),
-    limit: int = 10,
-    offset: int = 0
-):
-    """Search for products by name, brand, category, seller name, or description."""
-    query = query.strip()
-    
-    print(query)
-    if not query:
-        raise HTTPException(status_code=400, detail="Search query cannot be empty")
-
-    try:
-        stmt = (
-            select(Product)
-            .join(User, User.user_id == Product.seller_id)
-            .filter(
-                (Product.name.ilike(f"%{query}%")) |
-                (Product.brand.ilike(f"%{query}%")) |
-                (Product.description.ilike(f"%{query}%")) |
-                (Product.category_id == query) |
-                (User.first_name.ilike(f"%{query}%")) |
-                (User.last_name.ilike(f"%{query}%"))
-            )
-            .offset(offset)
-            .limit(limit)
-        )
-
-        result = await db.execute(stmt)
-        products = result.scalars().all()
-
-        
-        if not products:
-            raise HTTPException(status_code=404, detail="No matching products found")
-
-        return products
-
-    except HTTPException as http_exc:
-        raise http_exc
-
-    except Exception as e:
-        print(f"Error searching products: {e}")
-        raise HTTPException(status_code=500, detail="An error occurred while searching for products.")
-
-
-@router.post("/new/", response_model=ProductResponse)
+@router.post("/new", response_model=ProductResponse)
 async def create_product(
     product: ProductCreate,
     current_user: Annotated[User, Depends(require_role(['merchant']))],
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         # Ensure valid price and stock quantity
@@ -165,8 +116,8 @@ async def create_product(
             raise HTTPException(status_code=400, detail="Stock quantity cannot be negative")
 
         # Ensure category exists if provided
-        if product.category_id:
-            category = db.query(Category).filter(Category.category_id == product.category_id).first()
+        if product.category_name:
+            category = db.query(Category).filter(Category.category_name == product.category_name).first()
             if not category:
                 raise HTTPException(status_code=404, detail="Category not found")
 
@@ -176,7 +127,7 @@ async def create_product(
             description=product.description,
             price=product.price,
             stock_quantity=product.stock_quantity,
-            category_id=product.category_id,
+            category_name=product.category_name,
             seller_id=current_user.user_id,
             brand=product.brand,
             images=product.images
@@ -201,11 +152,11 @@ async def create_product(
         raise HTTPException(status_code=500, detail=f"{str(e)}")
 
 
-@router.get("/{product_id}/edit/", response_model=ProductCreate)
+@router.get("/{product_id}/edit", response_model=ProductCreate)
 async def get_product_for_edit(
     product_id: int, 
     current_user: Annotated[User, Depends(require_role(['merchant']))], 
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Fetch product details for editing. 
@@ -225,7 +176,7 @@ async def get_product_for_edit(
             description=product.description,
             price=product.price,
             stock_quantity=product.stock_quantity,
-            category_id=product.category_id,
+            category_name=product.category_name,
             brand=product.brand,
             images=product.images
         )
@@ -237,12 +188,12 @@ async def get_product_for_edit(
         raise HTTPException(status_code=500, detail="An unexpected error occurred while retrieving the product. %s" %e)
 
 
-@router.put("/{product_id}/edit/", response_model=ProductResponse)
+@router.put("/{product_id}/edit", response_model=ProductResponse)
 async def update_product(
     product_id: int, 
     product_data: ProductCreate,
     current_user: Annotated[User, Depends(require_role(['merchant']))], 
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Allows only the product owner (seller) to update the product.
@@ -285,11 +236,11 @@ async def update_product(
         raise HTTPException(status_code=500, detail="An error occurred while updating the product.")
 
 
-@router.delete("/{product_id}/")
+@router.delete("/{product_id}")
 async def delete_product(
     product_id: int, 
     current_user: Annotated[User, Depends(require_role(['merchant']))], 
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Allows only the product owner (seller) to delete the product.

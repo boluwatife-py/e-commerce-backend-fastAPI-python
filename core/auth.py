@@ -101,10 +101,14 @@ def require_role(required_roles: list[str]):
     return role_checker
 
 
-class OAuth2PasswordRequestFormWithEmail(OAuth2PasswordRequestForm):
+# from fastapi import Form
+# from fastapi.security import OAuth2PasswordRequestForm
+
+class OAuth2PasswordRequestFormWithEmail:
     def __init__(
         self,
-        email: EmailStr = Form(...),
+        email: str = Form(...),  # Form fields must be explicitly defined
         password: str = Form(...)
     ):
-        super().__init__(username=email, password=password)
+        self.username = email  # FastAPI's OAuth expects "username"
+        self.password = password

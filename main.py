@@ -67,7 +67,7 @@ def root():
 from app.routes import auth, products, user
 
 
-app.include_router(auth.router, prefix="/auth")
+app.include_router(auth.router, prefix="/auth", include_in_schema=False)
 app.include_router(products.router, prefix="/products")
 app.include_router(user.router, prefix="/user")
 if __name__ == "__main__":

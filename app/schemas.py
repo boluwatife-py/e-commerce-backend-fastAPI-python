@@ -35,12 +35,6 @@ class UserResponse(BaseModel):
 class RequestVerificationLink(BaseModel):
     email: EmailStr = Field(..., example="email@example.com")
 
-class ProductBase(BaseModel):
-    name: str
-    description: Optional[str] = None
-    price: Decimal
-    stock_quantity: int
-    category_id: Optional[int]
 
 class ProductCreate(BaseModel):
     name: str
@@ -66,13 +60,14 @@ class ProductCreate(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ProductResponse(BaseModel):
     product_id: int
     name: str
     description: Optional[str] = None
     price: float
     stock_quantity: int
-    category_id: Optional[int] = None
+    category_name: Optional[str] = None
     brand: Optional[str] = None
     images: Optional[List[str]] = []
     seller_id: int
@@ -82,6 +77,23 @@ class ProductResponse(BaseModel):
 
     class Config:
         from_attributes = True
+    
+    @classmethod
+    def from_orm(cls, product):
+        return cls(
+            product_id=product.product_id,
+            name=product.name,
+            description=product.description,
+            price=product.price,
+            stock_quantity=product.stock_quantity,
+            category_name=product.category.name if product.category else None,
+            brand=product.brand,
+            images=product.images if product.images else [],
+            seller_id=product.seller_id,
+            created_at=product.created_at,
+            updated_at=product.updated_at,
+            reviews=[]
+        )
 
 
 class ReviewResponse(BaseModel):

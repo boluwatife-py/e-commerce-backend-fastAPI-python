@@ -21,7 +21,7 @@ class User(Base):
     zip_code = Column(String(10))
     country = Column(String(50))
     is_active = Column(Boolean, default=False, nullable=False)
-    
+
     role = Column(Enum("admin", "buyer", "merchant", name="user_roles"), default="buyer", nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
@@ -31,10 +31,23 @@ class User(Base):
     reviews = relationship("Review", back_populates="user", cascade="all, delete-orphan")
     wishlists = relationship("Wishlist", back_populates="user", cascade="all, delete-orphan")
     cart = relationship("Cart", back_populates="user", cascade="all, delete-orphan")
-    
+
+    # Corrected relationships
+    reports_received = relationship(
+        "ProductReport",
+        foreign_keys='[ProductReport.seller_id]',  # No quotes
+        back_populates="reported_seller"
+    )
+
+    reports_made = relationship(
+        "ProductReport",
+        foreign_keys='[ProductReport.user_id]',  # Fixed incorrect reference
+        back_populates="reported_by"
+    )
 
     def __repr__(self):
         return f"<User {self.email} ({self.role})>"
+
 
     
 class Product(Base):
@@ -256,3 +269,19 @@ class PasswordResetToken(Base):
     email = Column(String, index=True)  # Associated email
     is_used = Column(Boolean, default=False)  # Check if token is used
     created_at = Column(DateTime, default=datetime.utcnow)  # Timestamp
+
+
+class ProductReport(Base):
+    __tablename__ = "product_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey("products.product_id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)  # User who reported
+    seller_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)  # Seller of the reported product
+    reason = Column(Text, nullable=False)
+    reported_at = Column(TIMESTAMP, server_default=func.now())
+
+    # Relationships
+    product = relationship("Product", back_populates="reports")
+    reported_by = relationship("User", foreign_keys=[user_id], back_populates="reports_made")  # User who submitted the report
+    reported_seller = relationship("User", foreign_keys=[seller_id], back_populates="reports_received")  # Seller who got reported

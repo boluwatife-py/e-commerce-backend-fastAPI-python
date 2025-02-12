@@ -193,6 +193,13 @@ def refresh_token(token_data: TokenRefreshRequest):
 
 
 def store_reset_token(db: Session, token: str, email: str):
+    """
+    Deactivates any existing reset token and stores a new one.
+    """
+    # Deactivate any previous reset token
+    db.query(PasswordResetToken).filter(PasswordResetToken.email == email).update({"is_used": True})
+
+    # Store the new reset token
     reset_token = PasswordResetToken(token=token, email=email)
     db.add(reset_token)
     db.commit()
@@ -206,7 +213,9 @@ def forgot_password(
     """
     Allows only unauthenticated users to request a password reset.
     If a valid token is provided in the Authorization header, reject the request.
+    Deactivates any previous reset token before generating a new one.
     """
+
     
     if authorization:
         token = authorization.replace("Bearer ", "")
@@ -224,16 +233,15 @@ def forgot_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    
     try:
         reset_token = create_password_reset_token(user.email)
         store_reset_token(db, reset_token, user.email)
-        db.commit()  # Ensure token storage is saved
+
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to generate password reset token")
 
-    # Send reset email
+    
     try:
         success, message = send_reset_password_email(user.email, reset_token)
         if not success:
@@ -243,6 +251,7 @@ def forgot_password(
         raise HTTPException(status_code=503, detail=f"Email service error: {str(e)}")
 
     return {"message": "A password reset link has been sent to your email"}
+
 
 @router.post("/reset-password/")
 def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
@@ -264,7 +273,7 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Invalid or expired token")
 
         if reset_token.is_used:
-            raise HTTPException(status_code=400, detail="This reset token has already been used")
+            raise HTTPException(status_code=400, detail="This reset token is no longer valid. Please request a new one.")
 
         
         user = db.query(User).filter(User.email == email).first()

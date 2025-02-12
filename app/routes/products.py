@@ -234,3 +234,14 @@ def update_product(
         print(f"Error updating product: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="An error occurred while updating the product.")
+
+
+@router.delete("/{product_id}/")
+def delete_product(product_id: int, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    db.delete(product)
+    db.commit()
+    return {"message": "Product deleted successfully"}

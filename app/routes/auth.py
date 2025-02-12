@@ -160,7 +160,7 @@ def verify_account(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="An error occurred while verifying the account.")
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login/", response_model=Token)
 def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(get_db)

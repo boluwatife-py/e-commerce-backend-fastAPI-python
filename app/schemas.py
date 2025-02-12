@@ -74,7 +74,7 @@ class ProductResponse(BaseModel):
     stock_quantity: int
     category_id: Optional[int] = None
     brand: Optional[str] = None
-    images: Optional[List[HttpUrl]] = []
+    images: Optional[List[str]] = []
     seller_id: int
     created_at: datetime
     updated_at: datetime

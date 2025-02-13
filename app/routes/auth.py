@@ -45,7 +45,7 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Phone already registered")
 
         user.password = hash_password(user.password)
-        
+
         db_user = User(
             email=user.email,
             first_name=user.first_name,
@@ -53,32 +53,28 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
             password_hash=user.password,
             phone=user.phone
         )
-        
-        db.add(db_user)
-        print(db_user.user_id)
-        # db.query(VerificationToken).filter(
-        #     VerificationToken.user_id == db_user.user_id,
-        #     VerificationToken.is_active == True
-        # ).update({"is_active": False})
-        try:
-            verification_token = create_verification_token(user.email)
-            # token_entry = VerificationToken(
-            #         token=verification_token,
-            #         user_id=db_user.user_id
-            #     )
-            # db.add(token_entry)
-        except Exception as e:
-            print(e)
-            raise HTTPException(status_code=500, detail="Failed to generate verification token")
-        
-        try:
-            success, message = send_verification_email(user.email, verification_token)
-            if not success:
-                raise HTTPException(status_code=503, detail=f"Email service error: {message}")
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=503, detail=f"Email service error: {str(e)}")
 
+        db.add(db_user)
+        db.flush()
+        
+        print(f"User ID after flush: {db_user.user_id}")
+
+        
+        verification_token = create_verification_token(user.email)
+        token_entry = VerificationToken(
+            token=verification_token,
+            id=db_user.user_id,
+            email=user.email
+        )
+        db.add(token_entry)
+        db.flush()
+
+        # Send verification email
+        success, message = send_verification_email(user.email, verification_token)
+        if not success:
+            raise HTTPException(status_code=503, detail=f"Email service error: {message}")
+
+        # Commit everything as a single transaction
         db.commit()
         db.refresh(db_user)
 
@@ -116,9 +112,10 @@ async def request_new_verification_link(data: RequestVerificationLink, db: Sessi
         if user.is_active:
             raise HTTPException(status_code=400, detail="Email is already verified")
 
+        print(user.user_id)
         
         db.query(VerificationToken).filter(
-            VerificationToken.user_id == user.user_id,
+            VerificationToken.id == user.user_id,
             VerificationToken.is_active == True
         ).update({"is_active": False})
 
@@ -126,7 +123,8 @@ async def request_new_verification_link(data: RequestVerificationLink, db: Sessi
         new_token = create_verification_token(user.email)
         token_entry = VerificationToken(
             token=new_token,
-            user_id=user.user_id
+            id=user.user_id,
+            email=user.email
         )
 
         db.add(token_entry)

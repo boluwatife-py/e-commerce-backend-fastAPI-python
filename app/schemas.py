@@ -33,7 +33,7 @@ class UserResponse(BaseModel):
     email: EmailStr = Field(..., example="example@example.com")
 
 class RequestVerificationLink(BaseModel):
-    email: EmailStr = Field(..., example="email@example.com")
+    email: EmailStr = Field(..., example="user@example.com")
 
 
 class ProductCreate(BaseModel):

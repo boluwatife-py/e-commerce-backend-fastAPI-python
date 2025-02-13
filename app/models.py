@@ -1,10 +1,9 @@
-from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean, JSON
-from sqlalchemy.orm import relationship, validates, session
+from sqlalchemy import Column, Integer, String, Enum, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean, JSON
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database import Base
 from sqlalchemy import Column, String, Boolean, DateTime
 from datetime import datetime
-from sqlalchemy.dialects import postgresql
 
 
 class User(Base):
@@ -23,7 +22,7 @@ class User(Base):
     country = Column(String(50))
     is_active = Column(Boolean, default=False, nullable=False)
 
-    role = Column(postgresql.ENUM("admin", "buyer", "merchant", name="user_roles", create_type=False), default="buyer", nullable=False, )
+    role = Column(String(20), nullable=False, default="buyer")
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     products = relationship("Product", back_populates="seller", cascade="all, delete", lazy="dynamic")
@@ -44,6 +43,10 @@ class User(Base):
         "ProductReport",
         foreign_keys='[ProductReport.user_id]',
         back_populates="reported_by"
+    )
+    
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'buyer', 'merchant')", name="check_user_role"),
     )
 
     def __repr__(self):
@@ -103,8 +106,8 @@ class Order(Base):
     user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     total_amount = Column(DECIMAL(10, 2), nullable=False)
     
-    order_status = Column(postgresql.ENUM("pending", "shipped", "delivered", "cancelled", "returned", name="order_status", create_type=False), default="pending", nullable=False)
-    order_payment_status = Column(postgresql.ENUM("pending", "completed", "failed", name="order_payment_status", create_type=False), default="pending", nullable=False)
+    order_status = Column(String(20), nullable=False, default="pending")
+    order_payment_status = Column(String(20), nullable=False, default="pending")
 
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
@@ -117,6 +120,11 @@ class Order(Base):
     payment = relationship("Payment", back_populates="order", uselist=False, cascade="all, delete-orphan")
     shipping = relationship("Shipping", back_populates="order", uselist=False, cascade="all, delete-orphan")
     coupon = relationship("Coupon", back_populates="orders")
+    __table_args__ = (
+        CheckConstraint("order_status IN ('pending', 'shipped', 'delivered', 'cancelled', 'returned')", name="check_order_status"),
+        CheckConstraint("order_payment_status IN ('pending', 'completed', 'failed')", name="check_order_payment_status"),
+    )
+
 
     def __repr__(self):
         return f"<Order {self.order_id} - {self.order_status} (${self.total_amount})>"
@@ -148,8 +156,8 @@ class Payment(Base):
     user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     amount = Column(DECIMAL(10, 2), nullable=False)
 
-    payment_method = Column(postgresql.ENUM("credit_card", "paypal", "bank_transfer", "crypto", name="payment_methods", create_type=False), nullable=False)
-    payment_status = Column(postgresql.ENUM("pending", "completed", "failed", name="payment_status", create_type=False), default="pending", nullable=False)
+    payment_method = Column(String(20), nullable=False)
+    payment_status = Column(String(20), nullable=False, default="pending")
 
     transaction_id = Column(String(255), unique=True, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
@@ -157,6 +165,10 @@ class Payment(Base):
     # Relationships
     order = relationship("Order", back_populates="payment")
     user = relationship("User", back_populates="payments")
+    __table_args__ = (
+        CheckConstraint("payment_method IN ('credit_card', 'paypal', 'bank_transfer', 'crypto')", name="check_payment_method"),
+        CheckConstraint("payment_status IN ('pending', 'completed', 'failed')", name="check_payment_status"),
+    )
 
     def __repr__(self):
         return f"<Payment {self.payment_id} - {self.payment_status} (${self.amount})>"
@@ -171,12 +183,16 @@ class Shipping(Base):
     carrier = Column(String(100), nullable=True)
     estimated_delivery_date = Column(Date, nullable=True)
 
-    shipping_status = Column(postgresql.ENUM("pending", "shipped", "delivered", "returned", name="shipping_status", create_type=False), default="pending", nullable=False)
+    shipping_status = Column(String(20), nullable=False, default="pending")
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    # Relationship
+    
     order = relationship("Order", back_populates="shipping")
-
+    
+    __table_args__ = (
+        CheckConstraint("shipping_status IN ('pending', 'shipped', 'delivered', 'returned')", name="check_shipping_status"),
+    )
+    
     def __repr__(self):
         return f"<Shipping {self.shipping_id} - {self.shipping_status} (Tracking: {self.tracking_number})>"
 
@@ -228,7 +244,7 @@ class Coupon(Base):
     valid_to = Column(Date, nullable=True)
     min_order_value = Column(DECIMAL(10, 2), default=0)
     max_discount_value = Column(DECIMAL(10, 2), nullable=True)
-    coupon_status = Column(postgresql.ENUM("active", "expired", "disabled", name="coupon_status", create_type=False), default="active", nullable=False)
+    coupon_status = Column(String(20), nullable=False, default="active")
     
     
     orders = relationship("Order", back_populates="coupon")
@@ -236,6 +252,7 @@ class Coupon(Base):
     # Constraints
     __table_args__ = (
         CheckConstraint("discount_percentage BETWEEN 0 AND 100", name="discount_percentage_check"),
+        CheckConstraint("coupon_status IN ('active', 'expired', 'disabled')", name="check_coupon_status"),
     )
 
     def __repr__(self):

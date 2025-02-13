@@ -57,24 +57,21 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
         db.add(db_user)
         db.flush()
         
-        print(f"User ID after flush: {db_user.user_id}")
-
-        
         verification_token = create_verification_token(user.email)
         token_entry = VerificationToken(
             token=verification_token,
-            id=db_user.user_id,
+            user_id=db_user.user_id,
             email=user.email
         )
         db.add(token_entry)
         db.flush()
 
-        # Send verification email
+        
         success, message = send_verification_email(user.email, verification_token)
         if not success:
             raise HTTPException(status_code=503, detail=f"Email service error: {message}")
 
-        # Commit everything as a single transaction
+        
         db.commit()
         db.refresh(db_user)
 
@@ -111,11 +108,10 @@ async def request_new_verification_link(data: RequestVerificationLink, db: Sessi
 
         if user.is_active:
             raise HTTPException(status_code=400, detail="Email is already verified")
-
-        print(user.user_id)
+        
         
         db.query(VerificationToken).filter(
-            VerificationToken.id == user.user_id,
+            VerificationToken.user_id == user.user_id,
             VerificationToken.is_active == True
         ).update({"is_active": False})
 
@@ -123,7 +119,7 @@ async def request_new_verification_link(data: RequestVerificationLink, db: Sessi
         new_token = create_verification_token(user.email)
         token_entry = VerificationToken(
             token=new_token,
-            id=user.user_id,
+            user_id=user.user_id,
             email=user.email
         )
 
@@ -149,7 +145,6 @@ async def request_new_verification_link(data: RequestVerificationLink, db: Sessi
         db.rollback()
         print(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
-
 
 
 @router.get('/verify-email/')
@@ -194,7 +189,6 @@ async def verify_account(token: str, db: Session = Depends(get_db)):
         db.rollback()
         print(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred while verifying the account.")
-
 
 
 @router.post("/login/", response_model=Token)

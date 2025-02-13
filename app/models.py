@@ -25,7 +25,7 @@ class User(Base):
     role = Column(String(20), nullable=False, default="buyer")
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    products = relationship("Product", back_populates="seller", cascade="all, delete", lazy="dynamic")
+    product = relationship("Product", back_populates="seller", cascade="all, delete", lazy="dynamic")
     orders = relationship("Order", back_populates="user", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
     reviews = relationship("Review", back_populates="user", cascade="all, delete-orphan")
@@ -59,27 +59,32 @@ class Product(Base):
     __tablename__ = "products"
 
     product_id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=True)
     description = Column(Text)
-    price = Column(DECIMAL(10, 2), nullable=False)
-    stock_quantity = Column(Integer, nullable=False)
+    price = Column(DECIMAL(10, 2), nullable=True)
+    stock_quantity = Column(Integer, nullable=True)
     category_id = Column(Integer, ForeignKey("categories.category_id", ondelete="SET NULL"), nullable=True)
     seller_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     brand = Column(String(100))
-    images = Column(JSON, nullable=True)
+    status = Column(String, default='draft', nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
-    category = relationship("Category", back_populates="products")
-    seller = relationship("User", back_populates="products")
+    category = relationship("Category", back_populates="product")
+    seller = relationship("User", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
     reviews = relationship("Review", back_populates="product", cascade="all, delete-orphan")
     wishlists = relationship("Wishlist", back_populates="product", cascade="all, delete-orphan")
     cart = relationship("Cart", back_populates="product", cascade="all, delete-orphan")
+    product_images = relationship("ProductImages", back_populates="product", cascade="all, delete", lazy="dynamic")
 
     reports = relationship("ProductReport", back_populates="product", cascade="all, delete-orphan")
     def __repr__(self):
         return f"<Product {self.name} (${self.price}) - Seller ID: {self.seller_id}>"
+    
+    __table_args__ = (
+        CheckConstraint("status IN ('draft', 'published')", name="check_product_status"),
+    )
     
 
 class Category(Base):
@@ -90,11 +95,11 @@ class Category(Base):
     description = Column(Text)
     parent_category_id = Column(Integer, ForeignKey("categories.category_id", ondelete="SET NULL"), nullable=True)
 
-    
+
     parent_category = relationship("Category", remote_side=[category_id], backref="subcategories")
 
-    
-    products = relationship("Product", back_populates="category")
+
+    product = relationship("Product", back_populates="category")
 
     def __repr__(self):
         return f"<Category {self.name}>"
@@ -319,3 +324,14 @@ class VerificationToken(Base):
     created_at = Column(DateTime, default=func.now())
     
     user = relationship("User", back_populates="verification_tokens")
+
+
+class ProductImages(Base):
+    __tablename__ = "product_images"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey('products.product_id'), nullable=False)
+    image_url = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    
+    product = relationship('Product', back_populates="product_images")

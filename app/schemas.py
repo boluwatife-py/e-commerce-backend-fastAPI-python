@@ -35,7 +35,6 @@ class UserResponse(BaseModel):
 class RequestVerificationLink(BaseModel):
     email: EmailStr = Field(..., example="user@example.com")
 
-
 class ProductCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -44,39 +43,51 @@ class ProductCreate(BaseModel):
         max_digits=12,
         nullable=False
     )] = Field(nullable=False)
-    
     stock_quantity: int
     category_id: Optional[int] = None
     brand: Optional[str] = None
-    images: Optional[List] = None
 
-    @field_validator("images")
-    @classmethod
-    def validate_images(cls, images):
-        if len(images) > 10:
-            raise ValueError("A product can have a maximum of 10 images")
-        return images
-    
     class Config:
         from_attributes = True
+
 
 
 class ProductResponse(BaseModel):
     product_id: int
-    name: str
+    name: Optional[str]
     description: Optional[str] = None
-    price: float
-    stock_quantity: int
+    price: Optional[float] = None
+    stock_quantity: Optional[int]
     category_id: Optional[int] = None
     brand: Optional[str] = None
-    images: Optional[List[str]] = []
-    seller_id: int
-    created_at: datetime
-    updated_at: datetime
+    status: Optional[str] = str
+    seller_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     reviews: List
+    images: List[str] = []
+
+    @classmethod
+    def from_orm(cls, product):
+        return cls(
+            product_id=product.product_id,
+            name=product.name,
+            description=product.description,
+            price=float(product.price) if product.price else None,
+            stock_quantity=product.stock_quantity,
+            category_id=product.category_id,
+            brand=product.brand,
+            status=product.status,
+            seller_id=product.seller_id,
+            created_at=product.created_at,
+            updated_at=product.updated_at,
+            reviews=[],
+            images=[image.image_url for image in product.product_images]
+        )
 
     class Config:
         from_attributes = True
+
         
 
 

@@ -31,6 +31,7 @@ class User(Base):
     reviews = relationship("Review", back_populates="user", cascade="all, delete-orphan")
     wishlists = relationship("Wishlist", back_populates="user", cascade="all, delete-orphan")
     cart = relationship("Cart", back_populates="user", cascade="all, delete-orphan")
+    verification_tokens = relationship("VerificationToken", back_populates="user")
 
     
     reports_received = relationship(
@@ -309,8 +310,12 @@ class PasswordResetToken(Base):
 class VerificationToken(Base):
     __tablename__ = 'verification_tokens'
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
+    
     token = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, index=True, nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=func.now())
+    
+    user = relationship("User", back_populates="verification_tokens")

@@ -68,7 +68,7 @@ class ProductResponse(BaseModel):
     images: List[str] = []
 
     @classmethod
-    def from_orm(cls, product):
+    def from_attributes(cls, product):
         return cls(
             product_id=product.product_id,
             name=product.name,
@@ -82,7 +82,7 @@ class ProductResponse(BaseModel):
             created_at=product.created_at,
             updated_at=product.updated_at,
             reviews=[],
-            images=[image.image_url for image in product.product_images]
+            images=['image.image_url for image in product.product_images']
         )
 
     class Config:

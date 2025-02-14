@@ -69,34 +69,7 @@ async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Handle reviews if they exist
-    reviews = []
-    if product.reviews:
-        reviews = [
-            ReviewResponse(
-                id=rev.id,
-                user_id=rev.user_id,
-                rating=rev.rating,
-                comment=rev.comment,
-            )
-            for rev in product.reviews
-        ]
-
-    # Build response
-    return ProductResponse(
-        product_id=product.product_id,
-        name=product.name,
-        description=product.description,
-        price=product.price,
-        stock_quantity=product.stock_quantity,
-        category_id=product.category_id,
-        brand=product.brand,
-        images=product.product_images,
-        seller_id=product.seller_id,
-        created_at=product.created_at,
-        updated_at=product.updated_at,
-        reviews=reviews,
-    )
+    return ProductResponse.model_validate(product)
 
 @router.get('/create/product/', response_model=int)
 async def create_product(

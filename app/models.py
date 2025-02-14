@@ -76,7 +76,7 @@ class Product(Base):
     reviews = relationship("Review", back_populates="product", cascade="all, delete-orphan")
     wishlists = relationship("Wishlist", back_populates="product", cascade="all, delete-orphan")
     cart = relationship("Cart", back_populates="product", cascade="all, delete-orphan")
-    product_images = relationship("ProductImages", back_populates="product", cascade="all, delete", lazy="dynamic")
+    product_images = relationship("ProductImages", back_populates="product", cascade="all, delete", lazy="selectin")
 
     reports = relationship("ProductReport", back_populates="product", cascade="all, delete-orphan")
     def __repr__(self):

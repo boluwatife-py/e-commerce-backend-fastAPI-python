@@ -17,8 +17,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 # Custom exception handler for authentication errors
 async def authentication_exception_handler(request: Request, exc: HTTPException):
+    if exc.status_code in {401, 403}:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": "Authentication failed", "message": exc.detail},
+        )
+
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": "Authentication failed", "message": exc.detail},
+        content={"detail": exc.detail},
     )
 

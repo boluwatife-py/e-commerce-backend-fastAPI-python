@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from core.database import get_db
 from app.models import Product, User, Category, ProductImages
-from app.schemas import ProductResponse, ProductCreate, ReviewResponse
+from app.schemas import ProductResponse, ProductCreate
 from core.auth import require_role
 from typing import Annotated, Optional, List
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,6 +11,13 @@ from sqlalchemy.orm import selectinload
 
 
 router = APIRouter()
+
+
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @router.get("/", response_model=List[ProductResponse])
@@ -23,38 +30,67 @@ async def get_products(
     limit: int = 10,
     offset: int = 0
 ):
-
     try:
         if limit <= 0 or limit > 100:
             raise HTTPException(status_code=400, detail="Limit must be between 1 and 100")
         if offset < 0:
             raise HTTPException(status_code=400, detail="Offset must be 0 or greater")
 
-        query = db.query(Product)
-        # query.filter(Product.status == 'published')
+        # Build query using select() with async session and eager loading
+        query = select(Product).options(selectinload(Product.product_images)).filter(Product.status == 'published')
+
         if category_name:
-            query = query.filter(Product.category_name == category_name)
+            query = query.join(Product.category).filter(Product.category.has(name=category_name))
+
         if brand:
             query = query.filter(Product.brand == brand)
+
         if min_price is not None:
             if min_price < 0:
                 raise HTTPException(status_code=400, detail="Minimum price must be non-negative")
             query = query.filter(Product.price >= min_price)
+
         if max_price is not None:
             if max_price < 0:
                 raise HTTPException(status_code=400, detail="Maximum price must be non-negative")
             query = query.filter(Product.price <= max_price)
 
-        
-        products = query.offset(offset).limit(limit).all()
+        # Add pagination
+        query = query.offset(offset).limit(limit)
+
+        # Execute query
+        result = db.execute(query)
+        products = result.scalars().all()
 
         if not products:
             raise HTTPException(status_code=404, detail="No products found with the given filters")
 
-        return ProductResponse.model_validate(products)
+        # Prepare response - First image only for the list view
+        product_responses = []
+        for product in products:
+            first_image_url = product.product_images[0].image_url if product.product_images else None
+            product_responses.append(
+                ProductResponse(
+                    product_id=product.product_id,
+                    name=product.name,
+                    description=product.description,
+                    price=float(product.price) if product.price else None,
+                    stock_quantity=product.stock_quantity,
+                    category_id=product.category_id,
+                    brand=product.brand,
+                    status=product.status,
+                    seller_id=product.seller_id,
+                    created_at=product.created_at,
+                    updated_at=product.updated_at,
+                    reviews=[],
+                    images=[first_image_url] if first_image_url else []
+                )
+            )
 
-    except HTTPException as http_exc:
-        raise http_exc
+        return product_responses
+
+    except HTTPException:
+        raise
 
     except Exception as e:
         print(f"Error retrieving products: {e}")
@@ -63,13 +99,17 @@ async def get_products(
 
 @router.get("/{product_id}/product/view/", response_model=ProductResponse)
 async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
-    """Retrieve a single product by ID (with reviews & user ID)."""
-    product = db.get(Product, product_id)
-
+    result = db.execute(
+        select(Product)
+        .options(selectinload(Product.product_images))
+        .filter(Product.product_id == product_id, Product.status == 'published')
+    )
+    product = result.scalars().first()
+    
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    return ProductResponse.model_validate(product)
+    return ProductResponse.from_attributes(product)
 
 @router.get('/create/product/', response_model=int)
 async def create_product(

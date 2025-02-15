@@ -67,44 +67,59 @@ class CurrencyResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ProductResponse(BaseModel):
     product_id: int
     name: Optional[str]
     description: Optional[str] = None
     price: Optional[float] = None
-    stock_quantity: Optional[int]
-    category_id: Optional[int] = None
+    stock_quantity: Optional[int] = None
     brand: Optional[str] = None
     status: str
     seller_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    reviews: List
+    reviews: List = []
     images: List[str] = []
     currency: Optional[CurrencyResponse] = None
+    category: Optional[CategoryResponse] = None
 
     @classmethod
     def from_attributes(cls, product):
+        category_response = None
+        if product.category:
+            category_response = CategoryResponse(
+                category_id=product.category.category_id,
+                name=product.category.name
+            )
+
+        currency_response = None
+        if product.currency:
+            currency_response = CurrencyResponse(
+                code=product.currency.code,
+                name=product.currency.name,
+                symbol=product.currency.symbol
+            )
+
         return cls(
             product_id=product.product_id,
             name=product.name,
             description=product.description,
             price=float(product.price) if product.price else None,
             stock_quantity=product.stock_quantity,
-            category_id=product.category_id,
             brand=product.brand,
             status=product.status,
             seller_id=product.seller_id,
             created_at=product.created_at,
             updated_at=product.updated_at,
             reviews=[],
-            images=[image.image_url for image in product.product_images]
+            images=[image.image_url for image in product.product_images],
+            category=category_response,
+            currency=currency_response
         )
-
 
     class Config:
         from_attributes = True
-
 
 class ReviewResponse(BaseModel):
     id: int

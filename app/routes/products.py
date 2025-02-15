@@ -36,8 +36,12 @@ async def get_products(
         if offset < 0:
             raise HTTPException(status_code=400, detail="Offset must be 0 or greater")
 
-        # Build query using select() with async session and eager loading
-        query = select(Product).options(selectinload(Product.product_images)).filter(Product.status == 'published')
+        
+        query = select(Product).options(
+            selectinload(Product.product_images),
+            selectinload(Product.currency),
+            selectinload(Product.category)
+        ).filter(Product.status == 'published')
 
         if category_name:
             query = query.join(Product.category).filter(Product.category.has(name=category_name))
@@ -100,10 +104,14 @@ async def get_products(
 @router.get("/{product_id}/product/view/", response_model=ProductResponse)
 async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
     result = db.execute(
-        select(Product)
-        .options(selectinload(Product.product_images))
-        .filter(Product.product_id == product_id, Product.status == 'published')
+    select(Product)
+    .options(
+        selectinload(Product.product_images),
+        selectinload(Product.category),
+        selectinload(Product.currency)
     )
+    .filter(Product.product_id == product_id, Product.status == 'published')
+)
     product = result.scalars().first()
     
     if not product:

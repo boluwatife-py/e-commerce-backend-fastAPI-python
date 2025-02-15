@@ -46,7 +46,7 @@ class ProductCreate(BaseModel):
     stock_quantity: int
     category_id: Optional[int] = None
     brand: Optional[str] = None
-    status : str = 'draft'
+    status : str
 
     class Config:
         from_attributes = True
@@ -59,7 +59,7 @@ class ProductResponse(BaseModel):
     stock_quantity: Optional[int]
     category_id: Optional[int] = None
     brand: Optional[str] = None
-    status: Optional[str] = str
+    status: str
     seller_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

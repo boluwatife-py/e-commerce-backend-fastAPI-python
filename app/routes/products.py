@@ -140,6 +140,72 @@ async def create_product(
         print(e)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
+@router.get("/edit/{product_id}/product/", response_model=ProductResponse)
+async def get_product_for_edit(
+    product_id: int,
+    product: ProductCreate,
+    current_user: Annotated[User, Depends(require_role(['merchant']))],
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        existing_product = db.get(Product, product_id)
+
+        if not existing_product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        if existing_product.seller_id != current_user.user_id:
+            raise HTTPException(status_code=403, detail="You do not have permission to edit this product")
+
+        # Updating fields if provided
+        if product.name is not None:
+            existing_product.name = product.name
+        if product.description is not None:
+            existing_product.description = product.description
+        if product.price is not None:
+            if product.price <= 0:
+                raise HTTPException(status_code=400, detail="Price must be greater than 0")
+            existing_product.price = product.price
+        if product.stock_quantity is not None:
+            if product.stock_quantity < 0:
+                raise HTTPException(status_code=400, detail="Stock quantity cannot be negative")
+            existing_product.stock_quantity = product.stock_quantity
+        if product.brand is not None:
+            existing_product.brand = product.brand
+
+        if product.category_id is not None:
+            category = db.get(Category, product.category_id)
+            if not category:
+                raise HTTPException(status_code=404, detail="Category not found")
+            existing_product.category_id = product.category_id
+
+        
+        if hasattr(product, 'status') and product.status in ['draft', 'published']:
+            existing_product.status = product.status
+
+            if product.status == 'published':
+                if not all([existing_product.name, existing_product.price, existing_product.stock_quantity]):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Cannot publish a product with missing name, price, or stock_quantity",
+                    )
+
+        db.commit()
+        db.refresh(existing_product)
+
+        return ProductResponse.from_attributes(existing_product)
+
+    except HTTPException:
+        raise
+
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+    except Exception as e:
+        db.rollback()
+        print(e)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
 
 @router.put("/edit/{product_id}/product/", response_model=ProductResponse)
 async def update_product(
@@ -193,7 +259,7 @@ async def update_product(
         db.commit()
         db.refresh(existing_product)
 
-        return existing_product
+        return ProductResponse.from_attributes(existing_product)
 
     except HTTPException:
         raise

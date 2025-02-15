@@ -46,11 +46,10 @@ class ProductCreate(BaseModel):
     stock_quantity: int
     category_id: Optional[int] = None
     brand: Optional[str] = None
+    status : str = 'draft'
 
     class Config:
         from_attributes = True
-
-
 
 class ProductResponse(BaseModel):
     product_id: int

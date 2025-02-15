@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from core.database import get_db
-from app.models import Product, User, Category, ProductImages
+from app.models import Product, User, Category, ProductImages, Currency
 from app.schemas import ProductResponse, ProductCreate
 from core.auth import require_role
 from typing import Annotated, Optional, List
@@ -59,17 +59,16 @@ async def get_products(
                 raise HTTPException(status_code=400, detail="Maximum price must be non-negative")
             query = query.filter(Product.price <= max_price)
 
-        # Add pagination
+        
         query = query.offset(offset).limit(limit)
 
-        # Execute query
+        
         result = db.execute(query)
         products = result.scalars().all()
 
         if not products:
             raise HTTPException(status_code=404, detail="No products found with the given filters")
 
-        # Prepare response - First image only for the list view
         product_responses = []
         for product in products:
             first_image_url = product.product_images[0].image_url if product.product_images else None
@@ -99,7 +98,6 @@ async def get_products(
     except Exception as e:
         print(f"Error retrieving products: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching products.")
-
 
 @router.get("/{product_id}/product/view/", response_model=ProductResponse)
 async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
@@ -194,7 +192,7 @@ async def update_product(
         if existing_product.seller_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="You do not have permission to edit this product")
 
-        # Updating fields if provided
+        
         if product.name is not None:
             existing_product.name = product.name
         if product.description is not None:
@@ -210,21 +208,34 @@ async def update_product(
         if product.brand is not None:
             existing_product.brand = product.brand
 
+        
         if product.category_id is not None:
-            category = db.get(Category, product.category_id)
+            category = await db.get(Category, product.category_id)
             if not category:
                 raise HTTPException(status_code=404, detail="Category not found")
             existing_product.category_id = product.category_id
 
-        
-        if hasattr(product, 'status') and product.status in ['draft', 'published']:
+
+        if product.currency_code is not None:
+            currency = await db.get(Currency, product.currency_code)
+            if not currency:
+                raise HTTPException(status_code=404, detail=f"Currency '{product.currency_code}' not found")
+            existing_product.currency_code = product.currency_code
+
+        allowed_statuses = {'draft', 'published', 'available'}
+        if product.status is not None:
+            if product.status not in allowed_statuses:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid status '{product.status}'. Allowed values: {', '.join(allowed_statuses)}",
+                )
             existing_product.status = product.status
 
-            if product.status == 'published':
+            if product.status in {'published', 'available'}:
                 if not all([existing_product.name, existing_product.price, existing_product.stock_quantity]):
                     raise HTTPException(
                         status_code=400,
-                        detail="Cannot publish a product with missing name, price, or stock_quantity",
+                        detail=f"Cannot set status to '{product.status}' with missing name, price, or stock_quantity",
                     )
 
         db.commit()

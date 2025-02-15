@@ -64,7 +64,7 @@ def root():
 
 
 
-from app.routes import auth, products, user, utils
+from app.routes import auth, misc, products, user
 
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -73,6 +73,6 @@ from fastapi.responses import JSONResponse
 app.include_router(auth.router, prefix="/auth", include_in_schema=False) #  AUTH ROUTE
 app.include_router(products.router, prefix="/products", include_in_schema=True) #  PRODUCTS ROUTE
 app.include_router(user.router, prefix="/user", include_in_schema=False) #  USERS ROUTE
-app.include_router(utils.router, prefix="/utility", include_in_schema=True) #  UTILITY ROUTE
+app.include_router(misc.router, prefix="/utility", include_in_schema=True) #  MISC ROUTE
 if __name__ == "__main__":
     app.run()

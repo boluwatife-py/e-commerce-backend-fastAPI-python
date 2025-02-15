@@ -46,7 +46,8 @@ class ProductCreate(BaseModel):
     stock_quantity: int
     category_id: Optional[int] = None
     brand: Optional[str] = None
-    status : str
+    status: str
+    currency_code: Optional[str] = None
 
     class Config:
         from_attributes = True

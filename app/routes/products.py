@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from core.database import get_db
 from app.models import Product, User, Category, ProductImages, Currency
-from app.schemas import ProductResponse, ProductCreate
+from app.schemas import ProductResponse, ProductCreate, cpr
 from core.auth import require_role
 from typing import Annotated, Optional, List
 from sqlalchemy.exc import SQLAlchemyError
@@ -117,11 +117,11 @@ async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
 
     return ProductResponse.from_attributes(product)
 
-@router.get('/create/product/', response_model=int)
+@router.get('/create/product/', response_model=cpr)
 async def create_product(
     current_user: Annotated[User, Depends(require_role(['merchant']))],
     db: AsyncSession = Depends(get_db)
-) -> int:
+)-> dict:
     try:
         new_product = Product(
             seller=current_user
@@ -131,7 +131,7 @@ async def create_product(
         db.commit()
         db.refresh(new_product)
         
-        return {'product_id': new_product.product_id}
+        return cpr(product_id=new_product.product_id)
         
     except HTTPException:
         raise
@@ -222,7 +222,7 @@ async def update_product(
                 raise HTTPException(status_code=404, detail=f"Currency '{product.currency_code}' not found")
             existing_product.currency_code = product.currency_code
 
-        allowed_statuses = {'draft', 'published', 'available'}
+        allowed_statuses = {'draft', 'published'}
         if product.status is not None:
             if product.status not in allowed_statuses:
                 raise HTTPException(
@@ -248,12 +248,13 @@ async def update_product(
 
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        print(e)
+        raise HTTPException(status_code=500, detail=f"Database error")
 
     except Exception as e:
         db.rollback()
         print(e)
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred")
 
 
 @router.delete("/delete/{product_id}/product/")
@@ -321,10 +322,12 @@ async def upload_product_image(
         raise
     except SQLAlchemyError as e:
         db.rollback()
+        print(e)
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     except Exception as e:
         db.rollback()
+        print(e)
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 

@@ -84,7 +84,7 @@ class ProductResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     reviews: List = []
-    images: List[ProductImageResponse] = []
+    images: Optional[List[ProductImageResponse]] = None
     currency: Optional[CurrencyResponse] = None
     category: Optional[CategoryResponse] = None
 
@@ -107,13 +107,13 @@ class ProductResponse(BaseModel):
 
         
         image_responses = [
-            ProductImageResponse(
-                id=image.id,
-                image_url=image.image_url,
-                position=image.position
-            )
-            for image in sorted(product.product_images, key=lambda img: img.position)
-        ]
+        ProductImageResponse(
+            id=image.id,
+            image_url=image.image_url,
+            position=image.position
+        )
+        for image in sorted(product.product_images, key=lambda img: img.position)
+    ] if product.product_images else []
 
         return cls(
             product_id=product.product_id,
@@ -134,6 +134,9 @@ class ProductResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class cpr(BaseModel):
+    product_id: int
 
         
 class ReviewResponse(BaseModel):

@@ -69,7 +69,9 @@ class Product(Base):
     status = Column(String, default='draft', nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    currency_code = Column(String(3), ForeignKey('currencies.code'), nullable=True)
 
+    currency = relationship('Currency', back_populates='products')
     category = relationship("Category", back_populates="product")
     seller = relationship("User", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
@@ -335,3 +337,13 @@ class ProductImages(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
     
     product = relationship('Product', back_populates="product_images")
+
+
+class Currency(Base):
+    __tablename__ = 'currencies'
+
+    code = Column(String(3), primary_key=True)
+    name = Column(String(50), nullable=False)
+    symbol = Column(String(5), nullable=True)
+
+    products = relationship('Product', back_populates='currency')

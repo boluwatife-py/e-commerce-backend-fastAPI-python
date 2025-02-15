@@ -51,6 +51,22 @@ class ProductCreate(BaseModel):
     class Config:
         from_attributes = True
 
+class CategoryResponse(BaseModel):
+    category_id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
+class CurrencyResponse(BaseModel):
+    code: str
+    name: str
+    symbol: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 class ProductResponse(BaseModel):
     product_id: int
     name: Optional[str]
@@ -65,6 +81,7 @@ class ProductResponse(BaseModel):
     updated_at: Optional[datetime] = None
     reviews: List
     images: List[str] = []
+    currency: Optional[CurrencyResponse] = None
 
     @classmethod
     def from_attributes(cls, product):
@@ -87,8 +104,6 @@ class ProductResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-        
 
 
 class ReviewResponse(BaseModel):

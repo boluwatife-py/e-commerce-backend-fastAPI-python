@@ -317,7 +317,42 @@ async def upload_product_image(
         db.refresh(new_image)
 
         return {"image_id": new_image.id, "image_url": new_image.image_url, 'product':product.product_id}
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+
+@router.put("/product-images/reorder/")
+async def reorder_images(
+    updates: List[dict],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Expected payload:
+    [
+        {"id": 12, "position": 1},
+        {"id": 15, "position": 2},
+        {"id": 14, "position": 3}
+    ]
+    """
+    try:
+        for update in updates:
+            image = await db.get(ProductImages, update["id"])
+            if not image:
+                raise HTTPException(status_code=404, detail=f"Image with ID {update['id']} not found")
+            image.position = update["position"]
+
+        await db.commit()
+        return {"message": "Image positions updated successfully"}
+    
+    except HTTPException:
+        raise
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

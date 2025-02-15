@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, DECIMAL, Date, CheckConstraint, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database import Base
@@ -330,13 +330,19 @@ class VerificationToken(Base):
 
 class ProductImages(Base):
     __tablename__ = "product_images"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(Integer, ForeignKey('products.product_id'), nullable=False)
     image_url = Column(String(255), nullable=False)
+    position = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    
+
     product = relationship('Product', back_populates="product_images")
+
+    __table_args__ = (
+        UniqueConstraint('product_id', 'position', name='unique_product_image_position'),
+    )
+
 
 
 class Currency(Base):
@@ -347,3 +353,5 @@ class Currency(Base):
     symbol = Column(String(5), nullable=True)
 
     products = relationship('Product', back_populates='currency')
+
+

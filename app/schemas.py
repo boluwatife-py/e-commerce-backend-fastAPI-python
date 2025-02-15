@@ -59,7 +59,6 @@ class CategoryResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class CurrencyResponse(BaseModel):
     code: str
     name: str
@@ -68,6 +67,10 @@ class CurrencyResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ProductImageResponse(BaseModel):
+    id: int
+    image_url: str
+    position: int
 
 class ProductResponse(BaseModel):
     product_id: int
@@ -81,7 +84,7 @@ class ProductResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     reviews: List = []
-    images: List[str] = []
+    images: List[ProductImageResponse] = []
     currency: Optional[CurrencyResponse] = None
     category: Optional[CategoryResponse] = None
 
@@ -102,6 +105,16 @@ class ProductResponse(BaseModel):
                 symbol=product.currency.symbol
             )
 
+        
+        image_responses = [
+            ProductImageResponse(
+                id=image.id,
+                image_url=image.image_url,
+                position=image.position
+            )
+            for image in sorted(product.product_images, key=lambda img: img.position)
+        ]
+
         return cls(
             product_id=product.product_id,
             name=product.name,
@@ -114,7 +127,7 @@ class ProductResponse(BaseModel):
             created_at=product.created_at,
             updated_at=product.updated_at,
             reviews=[],
-            images=[image.image_url for image in product.product_images],
+            images=image_responses,
             category=category_response,
             currency=currency_response
         )
@@ -122,6 +135,7 @@ class ProductResponse(BaseModel):
     class Config:
         from_attributes = True
 
+        
 class ReviewResponse(BaseModel):
     id: int
     user_id: int

@@ -135,6 +135,22 @@ class ProductResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ImagePositionUpdate(BaseModel):
+    id: int
+    position: int
+
+class ImagePositionUpdatePayload(BaseModel):
+    updates: List[ImagePositionUpdate]
+
+    @field_validator('updates')
+    def validate_unique_ids(cls, updates):
+        ids = [update.id for update in updates]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Duplicate image IDs found in the payload")
+        return updates
+
+
+
 class cpr(BaseModel):
     product_id: int
 

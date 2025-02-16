@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from core.database import get_db
 from app.models import Product, User, Category, ProductImages, Currency
-from app.schemas import ProductResponse, ProductCreate, cpr
+from app.schemas import ProductResponse, ProductCreate, cpr, CategoryResponse, CurrencyResponse, ProductImageResponse
 from core.auth import require_role
 from typing import Annotated, Optional, List
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 
@@ -36,12 +36,15 @@ async def get_products(
         if offset < 0:
             raise HTTPException(status_code=400, detail="Offset must be 0 or greater")
 
-        
-        query = select(Product).options(
-            selectinload(Product.product_images),
-            selectinload(Product.currency),
-            selectinload(Product.category)
-        ).filter(Product.status == 'published')
+        query = (
+            select(Product)
+            .options(
+                selectinload(Product.product_images),
+                selectinload(Product.currency),
+                selectinload(Product.category)
+            )
+            .filter(Product.status == 'published')
+        )
 
         if category_name:
             query = query.join(Product.category).filter(Product.category.has(name=category_name))
@@ -59,10 +62,8 @@ async def get_products(
                 raise HTTPException(status_code=400, detail="Maximum price must be non-negative")
             query = query.filter(Product.price <= max_price)
 
-        
         query = query.offset(offset).limit(limit)
 
-        
         result = db.execute(query)
         products = result.scalars().all()
 
@@ -71,7 +72,27 @@ async def get_products(
 
         product_responses = []
         for product in products:
-            first_image_url = product.product_images[0].image_url if product.product_images else None
+            first_image_url = None
+            if product.product_images:
+                first_image = min(product.product_images, key=lambda img: img.position)
+                first_image_url = first_image.image_url
+
+            
+            category_response = None
+            if product.category:
+                category_response = CategoryResponse(
+                    category_id=product.category.category_id,
+                    name=product.category.name
+                )
+
+            currency_response = None
+            if product.currency:
+                currency_response = CurrencyResponse(
+                    code=product.currency.code,
+                    name=product.currency.name,
+                    symbol=product.currency.symbol
+                )
+
             product_responses.append(
                 ProductResponse(
                     product_id=product.product_id,
@@ -79,14 +100,15 @@ async def get_products(
                     description=product.description,
                     price=float(product.price) if product.price else None,
                     stock_quantity=product.stock_quantity,
-                    category_id=product.category_id,
                     brand=product.brand,
                     status=product.status,
                     seller_id=product.seller_id,
                     created_at=product.created_at,
                     updated_at=product.updated_at,
                     reviews=[],
-                    images=[first_image_url] if first_image_url else []
+                    images=[ProductImageResponse(id=0, image_url=first_image_url, position=0)] if first_image_url else [],
+                    category=category_response,
+                    currency=currency_response,
                 )
             )
 
@@ -101,21 +123,34 @@ async def get_products(
 
 @router.get("/{product_id}/product/view/", response_model=ProductResponse)
 async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
-    result = db.execute(
-    select(Product)
-    .options(
-        selectinload(Product.product_images),
-        selectinload(Product.category),
-        selectinload(Product.currency)
-    )
-    .filter(Product.product_id == product_id, Product.status == 'published')
-)
-    product = result.scalars().first()
-    
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+    try:
+        result = db.execute(
+            select(Product)
+            .options(
+                selectinload(Product.product_images),
+                selectinload(Product.category),
+                selectinload(Product.currency)
+            )
+            .filter(Product.product_id == product_id, Product.status == 'published')
+        )
 
-    return ProductResponse.from_attributes(product)
+        product = result.scalars().first()
+
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        return ProductResponse.from_attributes(product)
+
+    except HTTPException:
+        raise
+
+    except SQLAlchemyError as e:
+        print(f"Database error while retrieving product {product_id}: {e}")
+        raise HTTPException(status_code=500, detail="Database error. Please try again later.")
+
+    except Exception as e:
+        print(f"Unexpected error while retrieving product {product_id}: {e}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred. Please try again later.")
 
 @router.get('/create/product/', response_model=cpr)
 async def create_product(
@@ -145,7 +180,6 @@ async def create_product(
         print(e)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
-
 @router.get("/edit/{product_id}/product/", response_model=ProductResponse)
 async def get_product_for_edit(
     product_id: int,
@@ -174,7 +208,6 @@ async def get_product_for_edit(
         db.rollback()
         print(e)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
-
 
 @router.put("/edit/{product_id}/product/", response_model=ProductResponse)
 async def update_product(
@@ -210,14 +243,14 @@ async def update_product(
 
         
         if product.category_id is not None:
-            category = await db.get(Category, product.category_id)
+            category = db.get(Category, product.category_id)
             if not category:
                 raise HTTPException(status_code=404, detail="Category not found")
             existing_product.category_id = product.category_id
 
 
         if product.currency_code is not None:
-            currency = await db.get(Currency, product.currency_code)
+            currency = db.get(Currency, product.currency_code)
             if not currency:
                 raise HTTPException(status_code=404, detail=f"Currency '{product.currency_code}' not found")
             existing_product.currency_code = product.currency_code
@@ -255,7 +288,6 @@ async def update_product(
         db.rollback()
         print(e)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred")
-
 
 @router.delete("/delete/{product_id}/product/")
 async def delete_product(
@@ -298,41 +330,70 @@ async def upload_product_image(
 ):
     try:
         product = db.get(Product, product_id)
+
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
-        
-        if product.seller_id != current_user.user_id:
-            raise HTTPException(status_code=403, detail="You do not have permission to this product")
 
-        # Upload image to your storage system and get URL
-        # Simulating it here:
+        if product.seller_id != current_user.user_id:
+            raise HTTPException(status_code=403, detail="You do not have permission to upload images for this product")
+
+        # ✅ Count the current images
+        result = db.execute(
+            select(func.count())
+            .filter(ProductImages.product_id == product.product_id)
+        )
+        image_count = result.scalar()
+
+        # ✅ Check if product already has 10 images
+        if image_count >= 10:
+            raise HTTPException(status_code=400, detail="A product can have a maximum of 10 images")
+
+        # ✅ Determine the next position (get highest position and add 1)
+        result = db.execute(
+            select(func.max(ProductImages.position))
+            .filter(ProductImages.product_id == product.product_id)
+        )
+        max_position = result.scalar() or 0
+        next_position = max_position + 1
+
+        # ✅ Upload image to your storage system and get URL
+        # Simulating image upload here:
         image_url = f"https://example.com/uploads/{image.filename}"
 
+        # ✅ Create image entry with `position=next_position`
         new_image = ProductImages(
             product_id=product.product_id,
-            image_url=image_url
+            image_url=image_url,
+            position=next_position
         )
 
         db.add(new_image)
         db.commit()
         db.refresh(new_image)
 
-        return {"image_id": new_image.id, "image_url": new_image.image_url, 'product':product.product_id}
+        return {
+            "image_id": new_image.id,
+            "image_url": new_image.image_url,
+            "position": new_image.position,
+            "product_id": product.product_id
+        }
+
     except HTTPException:
         raise
+
     except SQLAlchemyError as e:
         db.rollback()
-        print(e)
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        print(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     except Exception as e:
         db.rollback()
         print(e)
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-
+        raise HTTPException(status_code=500, detail=f"Unexpected error")
 
 @router.put("/product-images/reorder/")
 async def reorder_images(
+    current_user: Annotated[User, Depends(require_role(['merchant']))],
     updates: List[dict],
     db: AsyncSession = Depends(get_db),
 ):
@@ -345,21 +406,49 @@ async def reorder_images(
     ]
     """
     try:
-        for update in updates:
-            image = await db.get(ProductImages, update["id"])
-            if not image:
-                raise HTTPException(status_code=404, detail=f"Image with ID {update['id']} not found")
-            image.position = update["position"]
+        if not updates:
+            raise HTTPException(status_code=400, detail="Updates list cannot be empty")
 
-        await db.commit()
+        
+        image_ids = [update["id"] for update in updates]
+
+        
+        result = db.execute(
+            select(ProductImages)
+            .options(selectinload(ProductImages.product))
+            .filter(ProductImages.id.in_(image_ids))
+        )
+        images = result.scalars().all()
+
+        if len(images) != len(updates):
+            found_ids = {img.id for img in images}
+            missing_ids = [update["id"] for update in updates if update["id"] not in found_ids]
+            raise HTTPException(status_code=404, detail=f"Images with IDs {missing_ids} not found")
+
+        product_id = images[0].product_id
+        product = images[0].product
+
+        if any(img.product_id != product_id for img in images):
+            raise HTTPException(status_code=400, detail="All images must belong to the same product")
+
+        if product.seller_id != current_user.user_id:
+            raise HTTPException(status_code=403, detail="You do not have permission to reorder images for this product")
+
+        position_map = {update["id"]: update["position"] for update in updates}
+        for image in images:
+            image.position = position_map[image.id]
+
+        db.commit()
+
         return {"message": "Image positions updated successfully"}
-    
+
     except HTTPException:
         raise
     except SQLAlchemyError as e:
         db.rollback()
+        print(f"Database error: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
     except Exception as e:
         db.rollback()
+        print(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")

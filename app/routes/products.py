@@ -390,21 +390,6 @@ async def upload_product_image(
         print(e)
         raise HTTPException(status_code=500, detail=f"Unexpected error")
 
-async def normalize_image_positions(product_id: int, db: AsyncSession):
-    result = db.execute(
-        select(ProductImages)
-        .filter(ProductImages.product_id == product_id)
-        .order_by(ProductImages.position)
-        .with_for_update()
-    )
-    images = result.scalars().all()
-
-    for index, image in enumerate(images, start=1):
-        image.position = index
-
-    db.commit()
-
-
 @router.put("/product-images/reorder/")
 async def reorder_images(
     current_user: Annotated[User, Depends(require_role(['merchant']))],
@@ -449,27 +434,35 @@ async def reorder_images(
             if image_id not in images_by_id:
                 raise HTTPException(status_code=400, detail=f"Image with ID {image_id} does not belong to this product")
 
+        # Find a temporary position range that is not in use
+        max_position = max(image.position for image in images) if images else 0
+        temp_position_start = max_position + 100  # Start of temporary positions
 
-        temp_position = max(img.position for img in images) + 100
-
-        positions_to_take = set(updates.values())
-        images_to_move_temp = []
-
-        for position in positions_to_take:
-            if position in images_by_position:
-                image_to_temp = images_by_position[position]
-                image_to_temp.position = temp_position
-                images_to_move_temp.append(image_to_temp)
-                temp_position += 1
-
-        db.commit()
-
+        # Step 1: Move all images involved in updates to temporary positions
+        temp_positions = {}
         for image_id, new_position in updates.items():
             image_to_update = images_by_id[image_id]
+            if new_position in images_by_position:
+                # Assign a temporary position to the image
+                temp_position = temp_position_start + len(temp_positions)
+                temp_positions[image_id] = temp_position
+                image_to_update.position = temp_position
+                db.flush()  # Apply the temporary position change
+
+        # Step 2: Assign images to their final positions
+        for image_id, new_position in updates.items():
+            image_to_update = images_by_id[image_id]
+            if new_position in images_by_position:
+                # Move the image that was originally at the new position to its final position
+                image_to_swap = images_by_position[new_position]
+                image_to_swap.position = updates[image_to_swap.id] if image_to_swap.id in updates else temp_positions[image_to_swap.id]
+                db.flush()  # Apply the position change
+
+            # Move the current image to its final position
             image_to_update.position = new_position
+            db.flush()  # Apply the final position change
 
         db.commit()
-        await normalize_image_positions(product_id, db)
 
         return {"message": "Image positions updated successfully"}
 
@@ -478,16 +471,13 @@ async def reorder_images(
 
     except SQLAlchemyError as e:
         db.rollback()
-        print(f"Database error: {e}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        print(e)
+        raise HTTPException(status_code=500, detail=f"Database error")
 
-    except Exception as e:
-        db.rollback()
-        print(f"Unexpected error: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-
-
-
+    # except Exception as e:
+    #     db.rollback()
+    #     print(e)
+    #     raise HTTPException(status_code=500, detail=f"Unexpected error, please try again later.")
 
 
 

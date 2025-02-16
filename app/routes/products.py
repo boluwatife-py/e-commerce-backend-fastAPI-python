@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from core.database import get_db
 from app.models import Product, User, Category, ProductImages, Currency
-from app.schemas import ProductResponse, ProductCreate, cpr, CategoryResponse, CurrencyResponse, ProductImageResponse
+from app.schemas import ProductResponse, ProductCreate, cpr, CategoryResponse, CurrencyResponse, ProductImageResponse, ImagePositionUpdatePayload
 from core.auth import require_role
 from typing import Annotated, Optional, List
 from sqlalchemy.exc import SQLAlchemyError
@@ -394,25 +394,27 @@ async def upload_product_image(
 @router.put("/product-images/reorder/")
 async def reorder_images(
     current_user: Annotated[User, Depends(require_role(['merchant']))],
-    updates: List[dict],
+    payload: ImagePositionUpdatePayload,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Expected payload:
-    [
-        {"id": 12, "position": 1},
-        {"id": 15, "position": 2},
-        {"id": 14, "position": 3}
-    ]
+    {
+        "updates": [
+            {"id": 12, "position": 1},
+            {"id": 15, "position": 2},
+            {"id": 14, "position": 3}
+        ]
+    }
     """
     try:
+        updates = payload.updates
+
         if not updates:
             raise HTTPException(status_code=400, detail="Updates list cannot be empty")
 
-        
-        image_ids = [update["id"] for update in updates]
+        image_ids = [update.id for update in updates]
 
-        
         result = db.execute(
             select(ProductImages)
             .options(selectinload(ProductImages.product))
@@ -422,19 +424,22 @@ async def reorder_images(
 
         if len(images) != len(updates):
             found_ids = {img.id for img in images}
-            missing_ids = [update["id"] for update in updates if update["id"] not in found_ids]
+            missing_ids = [update.id for update in updates if update.id not in found_ids]
             raise HTTPException(status_code=404, detail=f"Images with IDs {missing_ids} not found")
 
         product_id = images[0].product_id
         product = images[0].product
 
+        
         if any(img.product_id != product_id for img in images):
             raise HTTPException(status_code=400, detail="All images must belong to the same product")
 
+        
         if product.seller_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="You do not have permission to reorder images for this product")
 
-        position_map = {update["id"]: update["position"] for update in updates}
+        
+        position_map = {update.id: update.position for update in updates}
         for image in images:
             image.position = position_map[image.id]
 
@@ -444,10 +449,12 @@ async def reorder_images(
 
     except HTTPException:
         raise
+
     except SQLAlchemyError as e:
         db.rollback()
         print(f"Database error: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
     except Exception as e:
         db.rollback()
         print(f"Unexpected error: {e}")

@@ -143,10 +143,10 @@ class ImagePositionUpdatePayload(BaseModel):
     updates: List[ImagePositionUpdate]
 
     @field_validator('updates')
-    def validate_unique_ids(cls, updates):
-        ids = [update.id for update in updates]
-        if len(ids) != len(set(ids)):
-            raise ValueError("Duplicate image IDs found in the payload")
+    def validate_unique_positions(cls, updates):
+        positions = [update.position for update in updates]
+        if len(positions) != len(set(positions)):
+            raise ValueError("Duplicate positions found in the payload")
         return updates
 
 

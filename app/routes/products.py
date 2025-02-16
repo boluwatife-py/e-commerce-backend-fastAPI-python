@@ -337,30 +337,29 @@ async def upload_product_image(
         if product.seller_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="You do not have permission to upload images for this product")
 
-        # ✅ Count the current images
+        
         result = db.execute(
             select(func.count())
             .filter(ProductImages.product_id == product.product_id)
         )
         image_count = result.scalar()
 
-        # ✅ Check if product already has 10 images
+        
         if image_count >= 10:
             raise HTTPException(status_code=400, detail="A product can have a maximum of 10 images")
 
-        # ✅ Determine the next position (get highest position and add 1)
+        
         result = db.execute(
             select(func.max(ProductImages.position))
             .filter(ProductImages.product_id == product.product_id)
         )
         max_position = result.scalar() or 0
         next_position = max_position + 1
-
-        # ✅ Upload image to your storage system and get URL
-        # Simulating image upload here:
+        
+        
         image_url = f"https://example.com/uploads/{image.filename}"
 
-        # ✅ Create image entry with `position=next_position`
+        
         new_image = ProductImages(
             product_id=product.product_id,
             image_url=image_url,
@@ -438,7 +437,7 @@ async def reorder_images(
         if product.seller_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="You do not have permission to reorder images for this product")
 
-        
+            
         position_map = {update.id: update.position for update in updates}
         for image in images:
             image.position = position_map[image.id]

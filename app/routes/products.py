@@ -390,6 +390,21 @@ async def upload_product_image(
         print(e)
         raise HTTPException(status_code=500, detail=f"Unexpected error")
 
+async def normalize_image_positions(product_id: int, db: AsyncSession):
+    result = db.execute(
+        select(ProductImages)
+        .filter(ProductImages.product_id == product_id)
+        .order_by(ProductImages.position)
+        .with_for_update()
+    )
+    images = result.scalars().all()
+
+    for index, image in enumerate(images, start=1):
+        image.position = index
+
+    db.commit()
+
+
 @router.put("/product-images/reorder/")
 async def reorder_images(
     current_user: Annotated[User, Depends(require_role(['merchant']))],
@@ -454,6 +469,7 @@ async def reorder_images(
             image_to_update.position = new_position
 
         db.commit()
+        await normalize_image_positions(product_id, db)
 
         return {"message": "Image positions updated successfully"}
 

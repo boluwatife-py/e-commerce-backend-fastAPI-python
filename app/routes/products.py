@@ -397,7 +397,7 @@ async def reorder_images(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Expected payload:
+    Example Payload:
     {
         "updates": [
             {"id": 12, "position": 1},
@@ -414,6 +414,7 @@ async def reorder_images(
 
         image_ids = [update.id for update in updates]
 
+        # Fetch all images in a single query
         result = db.execute(
             select(ProductImages)
             .options(selectinload(ProductImages.product))
@@ -421,23 +422,23 @@ async def reorder_images(
         )
         images = result.scalars().all()
 
+        # Validate all images exist
         if len(images) != len(updates):
             found_ids = {img.id for img in images}
             missing_ids = [update.id for update in updates if update.id not in found_ids]
             raise HTTPException(status_code=404, detail=f"Images with IDs {missing_ids} not found")
 
+        # Ensure all images belong to the same product
         product_id = images[0].product_id
         product = images[0].product
 
-        
         if any(img.product_id != product_id for img in images):
             raise HTTPException(status_code=400, detail="All images must belong to the same product")
 
-        
         if product.seller_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="You do not have permission to reorder images for this product")
 
-            
+        # Update positions based on payload
         position_map = {update.id: update.position for update in updates}
         for image in images:
             image.position = position_map[image.id]

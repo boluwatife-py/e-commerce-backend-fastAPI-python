@@ -393,6 +393,7 @@ async def upload_product_image(
 @router.put("/product-images/reorder/")
 async def reorder_images(
     current_user: Annotated[User, Depends(require_role(['merchant']))],
+    product_id: int,
     payload: ImagePositionUpdatePayload,
     db: AsyncSession = Depends(get_db),
 ):
@@ -400,48 +401,57 @@ async def reorder_images(
     Example Payload:
     {
         "updates": [
-            {"id": 12, "position": 1},
-            {"id": 15, "position": 2},
-            {"id": 14, "position": 3}
+            {"id": 8, "position": 2},
+            {"id": 9, "position": 5},
+            {"id": 10, "position": 1},
+            {"id": 12, "position": 1}
         ]
     }
     """
     try:
-        updates = payload.updates
+        updates = {update.id: update.position for update in payload.updates}
 
-        if not updates:
-            raise HTTPException(status_code=400, detail="Updates list cannot be empty")
-
-        image_ids = [update.id for update in updates]
-
-        # Fetch all images in a single query
         result = db.execute(
             select(ProductImages)
             .options(selectinload(ProductImages.product))
-            .filter(ProductImages.id.in_(image_ids))
+            .filter(ProductImages.product_id == product_id)
+            .with_for_update()
         )
         images = result.scalars().all()
 
-        # Validate all images exist
-        if len(images) != len(updates):
-            found_ids = {img.id for img in images}
-            missing_ids = [update.id for update in updates if update.id not in found_ids]
-            raise HTTPException(status_code=404, detail=f"Images with IDs {missing_ids} not found")
+        if not images:
+            raise HTTPException(status_code=404, detail="No images found for this product")
 
-        # Ensure all images belong to the same product
-        product_id = images[0].product_id
         product = images[0].product
-
-        if any(img.product_id != product_id for img in images):
-            raise HTTPException(status_code=400, detail="All images must belong to the same product")
 
         if product.seller_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="You do not have permission to reorder images for this product")
 
-        # Update positions based on payload
-        position_map = {update.id: update.position for update in updates}
-        for image in images:
-            image.position = position_map[image.id]
+        images_by_id = {image.id: image for image in images}
+        images_by_position = {image.position: image for image in images}
+
+        for image_id in updates.keys():
+            if image_id not in images_by_id:
+                raise HTTPException(status_code=400, detail=f"Image with ID {image_id} does not belong to this product")
+
+
+        temp_position = max(img.position for img in images) + 100
+
+        positions_to_take = set(updates.values())
+        images_to_move_temp = []
+
+        for position in positions_to_take:
+            if position in images_by_position:
+                image_to_temp = images_by_position[position]
+                image_to_temp.position = temp_position
+                images_to_move_temp.append(image_to_temp)
+                temp_position += 1
+
+        db.commit()
+
+        for image_id, new_position in updates.items():
+            image_to_update = images_by_id[image_id]
+            image_to_update.position = new_position
 
         db.commit()
 
@@ -459,3 +469,9 @@ async def reorder_images(
         db.rollback()
         print(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+
+
+
+
+

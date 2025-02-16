@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from core.database import get_db
 from app.models import Product, User, Category, ProductImages, Currency
-from app.schemas import ProductResponse, ProductCreate, cpr, CategoryResponse, CurrencyResponse, ProductImageResponse, ImagePositionUpdatePayload
+from app.schemas import ProductResponse, ProductCreate, cpr, CategoryResponse, CurrencyResponse, ProductImageResponse, ImageRankUpdatePayload
 from core.auth import require_role
 from typing import Annotated, Optional, List
 from sqlalchemy.exc import SQLAlchemyError
@@ -340,30 +340,29 @@ async def upload_product_image(
         
         result = db.execute(
             select(func.count())
+            .select_from(ProductImages)
             .filter(ProductImages.product_id == product.product_id)
         )
         image_count = result.scalar()
 
-        
         if image_count >= 10:
             raise HTTPException(status_code=400, detail="A product can have a maximum of 10 images")
 
         
         result = db.execute(
-            select(func.max(ProductImages.position))
+            select(func.max(ProductImages.rank))
             .filter(ProductImages.product_id == product.product_id)
         )
-        max_position = result.scalar() or 0
-        next_position = max_position + 1
-        
+        max_rank = result.scalar() or 0.0
+        next_rank = max_rank + 1.0
+
         
         image_url = f"https://example.com/uploads/{image.filename}"
 
-        
         new_image = ProductImages(
             product_id=product.product_id,
             image_url=image_url,
-            position=next_position
+            rank=next_rank
         )
 
         db.add(new_image)
@@ -373,7 +372,7 @@ async def upload_product_image(
         return {
             "image_id": new_image.id,
             "image_url": new_image.image_url,
-            "position": new_image.position,
+            "rank": new_image.rank,
             "product_id": product.product_id
         }
 
@@ -388,33 +387,33 @@ async def upload_product_image(
     except Exception as e:
         db.rollback()
         print(e)
-        raise HTTPException(status_code=500, detail=f"Unexpected error")
+        raise HTTPException(status_code=500, detail="Unexpected error occurred")
+
 
 @router.put("/product-images/reorder/")
 async def reorder_images(
     current_user: Annotated[User, Depends(require_role(['merchant']))],
     product_id: int,
-    payload: ImagePositionUpdatePayload,
+    payload: ImageRankUpdatePayload,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Example Payload:
     {
         "updates": [
-            {"id": 8, "position": 2},
-            {"id": 9, "position": 5},
-            {"id": 10, "position": 1},
-            {"id": 12, "position": 1}
+            {"id": 8},
+            {"id": 9},
+            {"id": 10}
         ]
     }
+    Frontend should send all image IDs in the final desired order.
     """
     try:
-        updates = {update.id: update.position for update in payload.updates}
-
         result = db.execute(
             select(ProductImages)
             .options(selectinload(ProductImages.product))
             .filter(ProductImages.product_id == product_id)
+            .order_by(ProductImages.rank)
             .with_for_update()
         )
         images = result.scalars().all()
@@ -423,44 +422,26 @@ async def reorder_images(
             raise HTTPException(status_code=404, detail="No images found for this product")
 
         product = images[0].product
-
         if product.seller_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="You do not have permission to reorder images for this product")
 
-        images_by_id = {image.id: image for image in images}
-        images_by_position = {image.position: image for image in images}
+        
+        provided_ids = [update.id for update in payload.updates]
 
-        for image_id in updates.keys():
-            if image_id not in images_by_id:
-                raise HTTPException(status_code=400, detail=f"Image with ID {image_id} does not belong to this product")
+        db_image_ids = {image.id for image in images}
+        missing_ids = [image_id for image_id in provided_ids if image_id not in db_image_ids]
 
-        # Find a temporary position range that is not in use
-        max_position = max(image.position for image in images) if images else 0
-        temp_position_start = max_position + 100  # Start of temporary positions
+        if missing_ids:
+            raise HTTPException(status_code=400, detail=f"Image IDs {missing_ids} not found or do not belong to this product")
 
-        # Step 1: Move all images involved in updates to temporary positions
-        temp_positions = {}
-        for image_id, new_position in updates.items():
-            image_to_update = images_by_id[image_id]
-            if new_position in images_by_position:
-                # Assign a temporary position to the image
-                temp_position = temp_position_start + len(temp_positions)
-                temp_positions[image_id] = temp_position
-                image_to_update.position = temp_position
-                db.flush()  # Apply the temporary position change
+        
+        if set(provided_ids) != db_image_ids:
+            raise HTTPException(status_code=400, detail=f"All images for product {product_id} must be provided in the payload")
 
-        # Step 2: Assign images to their final positions
-        for image_id, new_position in updates.items():
-            image_to_update = images_by_id[image_id]
-            if new_position in images_by_position:
-                # Move the image that was originally at the new position to its final position
-                image_to_swap = images_by_position[new_position]
-                image_to_swap.position = updates[image_to_swap.id] if image_to_swap.id in updates else temp_positions[image_to_swap.id]
-                db.flush()  # Apply the position change
-
-            # Move the current image to its final position
-            image_to_update.position = new_position
-            db.flush()  # Apply the final position change
+        
+        id_to_image = {image.id: image for image in images}
+        for index, image_id in enumerate(provided_ids, start=1):
+            id_to_image[image_id].rank = float(index)
 
         db.commit()
 
@@ -471,13 +452,13 @@ async def reorder_images(
 
     except SQLAlchemyError as e:
         db.rollback()
-        print(e)
-        raise HTTPException(status_code=500, detail=f"Database error")
+        print(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-    # except Exception as e:
-    #     db.rollback()
-    #     print(e)
-    #     raise HTTPException(status_code=500, detail=f"Unexpected error, please try again later.")
+    except Exception as e:
+        db.rollback()
+        print(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
 

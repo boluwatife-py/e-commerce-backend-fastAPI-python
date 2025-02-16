@@ -70,7 +70,7 @@ class CurrencyResponse(BaseModel):
 class ProductImageResponse(BaseModel):
     id: int
     image_url: str
-    position: int
+    rank: float
 
 class ProductResponse(BaseModel):
     product_id: int
@@ -85,8 +85,8 @@ class ProductResponse(BaseModel):
     updated_at: Optional[datetime] = None
     reviews: List = []
     images: Optional[List[ProductImageResponse]] = None
-    currency: Optional[CurrencyResponse] = None
-    category: Optional[CategoryResponse] = None
+    currency: Optional["CurrencyResponse"] = None
+    category: Optional["CategoryResponse"] = None
 
     @classmethod
     def from_attributes(cls, product):
@@ -105,15 +105,14 @@ class ProductResponse(BaseModel):
                 symbol=product.currency.symbol
             )
 
-        
         image_responses = [
-        ProductImageResponse(
-            id=image.id,
-            image_url=image.image_url,
-            position=image.position
-        )
-        for image in sorted(product.product_images, key=lambda img: img.position)
-    ] if product.product_images else []
+            ProductImageResponse(
+                id=image.id,
+                image_url=image.image_url,
+                rank=image.rank
+            )
+            for image in sorted(product.product_images, key=lambda img: img.rank)
+        ] if product.product_images else []
 
         return cls(
             product_id=product.product_id,
@@ -135,20 +134,24 @@ class ProductResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class ImagePositionUpdate(BaseModel):
-    id: int
-    position: int
 
-class ImagePositionUpdatePayload(BaseModel):
-    updates: List[ImagePositionUpdate]
+class ImageRankUpdate(BaseModel):
+    id: int
+    rank: float  # 👈 Change from position to rank
+
+
+class ImageRankUpdatePayload(BaseModel):
+    updates: List[ImageRankUpdate]
 
     @field_validator('updates')
-    def validate_unique_positions(cls, updates):
-        positions = [update.position for update in updates]
-        if len(positions) != len(set(positions)):
-            raise ValueError("Duplicate positions found in the payload")
+    def validate_unique_ranks(cls, updates):
+        ranks = [update.rank for update in updates]
+        if len(ranks) != len(set(ranks)):
+            raise ValueError("Duplicate ranks found in the payload")
+        
+        if max(ranks) > 10:
+            raise ValueError("The highest rank cannot exceed 10")
         return updates
-
 
 
 class cpr(BaseModel):
